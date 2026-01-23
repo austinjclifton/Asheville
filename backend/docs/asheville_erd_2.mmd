@@ -1,0 +1,135 @@
+---
+config:
+  layout: elk
+---
+erDiagram
+    direction TB
+
+    BEEKEEPER {
+        int id PK
+        string username
+        string password_hash
+        string email
+        string phone
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    HIVE {
+        int id PK
+        int beekeeper_id FK
+        int location_id FK
+        string name
+        string hive_identifier
+        string status
+        string notes
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    SESSION {
+        int id PK
+        int beekeeper_id FK
+        string session_token
+        bool active
+        timestamp created_at
+        timestamp expires_at
+        timestamp last_activity_at
+    }
+
+    DEVICE {
+        int id PK
+        int hive_id FK
+        string device_identifier
+        string model
+        string firmware_version
+        timestamp installed_at
+        timestamp last_seen_at
+        bool active
+    }
+
+    READING {
+        int id PK
+        int device_id FK
+        timestamp recorded_at
+        string metric_type
+        float value
+        string unit
+        string source
+        string gateway_id
+        string raw_payload
+        timestamp created_at
+    }
+
+
+
+    LOCATION {
+        int id PK
+        float latitude
+        float longitude
+        string description
+        string address
+        string timezone
+        timestamp created_at
+    }
+
+    API_WEATHER_READING {
+        int id PK
+        int location_id FK
+        timestamp recorded_at
+        float temperature
+        float humidity
+        float wind_speed
+        float wind_direction
+        float rainfall_mm
+        float pressure_hpa
+        string source
+        timestamp created_at
+    }
+
+    DAILY_AGGREGATE {
+        int id PK
+        int device_id FK
+        string metric_type
+        date day
+        float min_value
+        float max_value
+        float avg_value
+        int sample_count
+        timestamp created_at
+    }
+
+    ALERT_RULE {
+        int id PK
+        int hive_id FK
+        string metric_type
+        string comparator
+        float threshold_value
+        float threshold_value_2
+        int duration_minutes
+        string severity
+        bool enabled
+        timestamp created_at
+    }
+
+    ALERT_EVENT {
+        int id PK
+        int rule_id FK
+        timestamp fired_at
+        timestamp cleared_at
+        string status
+        string message
+        timestamp created_at
+    }
+
+
+
+    BEEKEEPER ||--o{ HIVE : owns
+    BEEKEEPER ||--o{ SESSION : has
+    LOCATION ||--o{ HIVE : hosts
+    LOCATION ||--o{ API_WEATHER_READING : external_weather_api
+    HIVE ||--o{ DEVICE : has
+    DEVICE ||--o{ READING : produces
+    DEVICE ||--o{ DAILY_AGGREGATE : summarized
+    HIVE ||--o{ ALERT_RULE : monitors
+    ALERT_RULE ||--o{ ALERT_EVENT : triggers

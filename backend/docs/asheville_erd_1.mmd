@@ -1,0 +1,158 @@
+erDiagram
+    direction TB
+
+    BEEKEEPER {
+        int id
+        string username
+        string password
+        string email
+        string phone
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    HIVE {
+        int id
+        int beekeeper_id
+        int location_id
+        string name
+        string status
+        string notes
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    COLONY {
+        int id
+        int beekeeper_id
+        string identifier
+        string status
+        timestamp ended_at
+        string notes
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    COLONY_OCCUPANCY {
+        int id
+        int colony_id
+        int hive_id
+        timestamp start_date
+        timestamp end_date
+        string reason
+        string moved_by
+        timestamp created_at
+    }
+
+    SESSION {
+        int id
+        int beekeeper_id
+        string session_token
+        bool active
+        timestamp created_at
+        timestamp expires_at
+        timestamp last_activity_at
+    }
+
+    DEVICE {
+        int id
+        int hive_id
+        string model
+        string firmware_version
+        timestamp installed_at
+        timestamp last_seen_at
+    }
+
+    SENSOR {
+        int id
+        int device_id
+    }
+
+    READING {
+        int id
+        int sensor_id
+        timestamp recorded_at
+        float value
+        string unit
+        string gateway_id
+        string raw_payload
+        timestamp created_at
+    }
+
+    DAILY_AGGREGATE {
+        int id
+        int sensor_id
+        date day
+        float min_value
+        float max_value
+        float avg_value
+        int sample_count
+        timestamp created_at
+    }
+
+    ALERT_RULE {
+        int id
+        int colony_id
+        int hive_id
+        string rule_type
+        string comparator
+        float threshold_value
+        int duration_minutes
+       string severity
+        bool enabled
+        timestamp created_at
+    }
+
+    ALERT_EVENT {
+        int id
+        int rule_id
+        timestamp fired_at
+        timestamp cleared_at
+        string status
+        string message
+        timestamp created_at
+    }
+
+    LOCATION {
+        int id
+        float latitude
+        float longitude
+        string description
+        string address
+        string timezone
+        timestamp created_at
+    }
+
+    WEATHER_READING {
+        int id
+        int location_id
+        timestamp recorded_at
+        float temperature
+        float humidity
+        float wind_speed
+        float wind_direction
+        float rainfall_mm
+        float pressure_hpa
+        string source
+        timestamp created_at
+    }
+
+    BEEKEEPER ||--o{ HIVE : owns
+    BEEKEEPER ||--o{ COLONY : manages
+    BEEKEEPER ||--o{ SESSION : has
+
+    HIVE ||--o| LOCATION : located_at
+    HIVE ||--|| DEVICE : has
+    DEVICE ||--|| SENSOR : contains
+
+    SENSOR ||--o{ READING : records
+    SENSOR ||--o{ DAILY_AGGREGATE : summarized_in
+
+    COLONY ||--o{ ALERT_RULE : has
+    ALERT_RULE ||--o{ ALERT_EVENT : triggers
+    HIVE ||..o{ ALERT_RULE : optional
+
+    LOCATION ||--o{ WEATHER_READING : has
+
+    COLONY ||--o{ COLONY_OCCUPANCY : history
+    HIVE ||--o{ COLONY_OCCUPANCY : hosts
