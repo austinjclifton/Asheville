@@ -6,62 +6,51 @@ erDiagram
     direction TB
 
     BEEKEEPER {
-        int id PK
-        string username
-        string password_hash
-        string email
-        string phone
-        timestamp created_at
-        timestamp updated_at
+        id bigint PK
+        username string
+        password_hash string
+        email string
+        phone string
+        created_at timestamp
+        updated_at timestamp
     }
 
     HIVE {
-        int id PK
-        int beekeeper_id FK
-        int location_id FK
-        string name
-        string hive_identifier
-        string status
-        string notes
-        timestamp created_at
-        timestamp updated_at
+        id bigint PK
+        beekeeper_id bigint FK
+        name string
+        notes string
+        created_at timestamp
+        updated_at timestamp
     }
 
     SESSION {
-        int id PK
-        int beekeeper_id FK
-        string session_token
-        bool active
-        timestamp created_at
-        timestamp expires_at
-        timestamp last_activity_at
+        id bigint PK
+        beekeeper_id bigint FK
+        session_token string
+        active bool
+        created_at timestamp
+        expires_at timestamp
+        last_activity_at timestamp
     }
 
     DEVICE {
-        int id PK
-        int hive_id FK
-        string device_identifier
-        string model
-        string firmware_version
-        timestamp installed_at
-        timestamp last_seen_at
-        bool active
+        id bigint PK
+        hive_id bigint FK
+        installed_at timestamp
+        last_seen_at timestamp
+        active bool
     }
 
     READING {
-        int id PK
-        int device_id FK
-        timestamp recorded_at
-        string metric_type
-        float value
-        string unit
-        string source
-        string gateway_id
-        string raw_payload
-        timestamp created_at
+        id bigint PK
+        device_id bigint FK
+        recorded_at timestamp
+        temperature_c float
+        battery_voltage float
+        signal_strength float
+        created_at timestamp
     }
-
-
 
     BEEKEEPER ||--o{ HIVE : owns
     BEEKEEPER ||--o{ SESSION : has
