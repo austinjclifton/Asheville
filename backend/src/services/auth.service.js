@@ -1,61 +1,106 @@
+"use strict";
+
 /**
- * Auth Service
+ * Auth Service (MVP)
  *
  * Responsibilities:
- * - Own all authentication and session-related business logic
- * - Coordinate between controllers and data access layers
- * - Enforce security rules and invariants
+ * - Own authentication flows (register, login, logout)
+ * - Own session lifecycle at a business-rule level
+ * - Stay HTTP-agnostic
  *
- * This file represents the single source of truth for:
- * - user identity
- * - session validity
- * - password lifecycle
+ * This file intentionally:
+ * - Contains ONLY exported service functions
+ * - Uses minimal helpers inline
+ * - Avoids premature abstractions
  *
- * This file should NOT:
- * - Access HTTP request/response objects
- * - Set cookies
- * - Contain Express middleware
+ * DB/repository logic will be injected later.
  */
 
-const usersRepo = require("../db/users.db");
-const sessionsRepo = require("../db/sessions.db");
+/* -------------------------------------------------------------------------- */
+/* Configuration                                                               */
+/* -------------------------------------------------------------------------- */
+
+const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
 /* -------------------------------------------------------------------------- */
-/*                               Account Lifecycle                             */
+/* Utilities (MVP-only, minimal)                                               */
+/* -------------------------------------------------------------------------- */
+
+function normalizeEmail(email) {
+  return typeof email === "string" ? email.trim().toLowerCase() : "";
+}
+
+function normalizeIdentifier(identifier) {
+  return typeof identifier === "string" ? identifier.trim() : "";
+}
+
+function computeSessionExpiration() {
+  return new Date(Date.now() + SESSION_DURATION_MS);
+}
+
+function generateSessionToken() {
+  const crypto = require("crypto");
+  return crypto.randomBytes(32).toString("hex");
+}
+
+/* -------------------------------------------------------------------------- */
+/* Public API                                                                  */
 /* -------------------------------------------------------------------------- */
 
 /**
  * register
  *
- * Creates a new user account and an initial session.
+ * Creates a user and initial session.
  */
-exports.register = async ({ username, email, password }) => {
-  // TODO:
-  // - Normalize username/email
-  // - Ensure username/email are unique
-  // - Hash password
-  // - Create user record
-  // - Create initial session
+exports.register = async ({ username, email, password, context }) => {
+  if (!username || !email || !password) {
+    throw new Error("Missing required registration fields");
+  }
 
-  throw new Error("Not implemented");
+  const normalizedEmail = normalizeEmail(email);
+
+  // TODO (DB layer):
+  // - ensure username/email uniqueness
+  // - hash password
+  // - create user
+  // - persist session
+
+  const user = null; // placeholder
+  const session = {
+    id: null,
+    token: generateSessionToken(),
+    expiresAt: computeSessionExpiration(),
+  };
+
+  return { user, session };
 };
-
-/* -------------------------------------------------------------------------- */
-/*                               Authentication                                */
-/* -------------------------------------------------------------------------- */
 
 /**
  * login
  *
- * Authenticates a user and creates a new session.
+ * Authenticates a user and creates a session.
  */
-exports.login = async ({ identifier, password }) => {
-  // TODO:
-  // - Find user by email or username
-  // - Verify password hash
-  // - Create new session
+exports.login = async ({ identifier, password, context }) => {
+  if (!identifier || !password) {
+    throw new Error("Missing credentials");
+  }
 
-  throw new Error("Not implemented");
+  const normalizedIdentifier = normalizeIdentifier(identifier);
+
+  // TODO (DB layer):
+  // - resolve identifier (email vs username)
+  // - load user
+  // - verify password hash
+  // - persist session
+
+  const user = null; // placeholder
+  const session = {
+    id: null,
+    token: generateSessionToken(),
+    expiresAt: computeSessionExpiration(),
+  };
+
+  return { user, session };
 };
 
 /**
@@ -63,155 +108,51 @@ exports.login = async ({ identifier, password }) => {
  *
  * Invalidates a single session.
  */
-exports.logout = async ({ sessionId }) => {
-  // TODO:
-  // - Invalidate session by ID
+exports.logout = async ({ sessionToken }) => {
+  if (!sessionToken) {
+    throw new Error("sessionToken is required");
+  }
 
-  throw new Error("Not implemented");
-};
-
-/**
- * logoutAll
- *
- * Invalidates all active sessions for a user.
- * (Used for password change, account compromise, admin actions)
- */
-exports.logoutAll = async ({ userId }) => {
-  // TODO:
-  // - Invalidate all sessions for user
-
-  throw new Error("Not implemented");
-};
-
-/* -------------------------------------------------------------------------- */
-/*                               Session Lifecycle                              */
-/* -------------------------------------------------------------------------- */
-
-/**
- * createSession
- *
- * Creates a new session for a user.
- */
-exports.createSession = async ({ userId }) => {
-  // TODO:
-  // - Generate secure random session token
-  // - Compute expiration timestamp
-  // - Persist session record
-
-  throw new Error("Not implemented");
+  // TODO (DB layer):
+  // - invalidate session by token
 };
 
 /**
  * getSessionContext
  *
- * Validates a session token and returns user + session context.
- *
- * Used by auth middleware.
+ * Validates a session token and returns user + session.
+ * Used exclusively by auth middleware.
  */
 exports.getSessionContext = async ({ sessionToken }) => {
-  // TODO:
-  // - Lookup session by token
-  // - Verify active flag
-  // - Verify expiration
-  // - Load associated user
-  // - Update last_activity_at
-  // - Return context
+  if (!sessionToken) {
+    throw new Error("sessionToken is required");
+  }
 
-  throw new Error("Not implemented");
+  // TODO (DB layer):
+  // - load session by token
+  // - verify active + not expired
+  // - load user
+  // - update last activity
+
+  const user = null; // placeholder
+  const session = null; // placeholder
+
+  return { user, session };
 };
-
-/**
- * refreshSession
- *
- * Extends or renews an active session.
- */
-exports.refreshSession = async ({ sessionId }) => {
-  // TODO:
-  // - Validate session
-  // - Extend expiration
-  // - Optionally rotate token
-
-  throw new Error("Not implemented");
-};
-
-/* -------------------------------------------------------------------------- */
-/*                             Password Lifecycle                               */
-/* -------------------------------------------------------------------------- */
 
 /**
  * changePassword
  *
- * Changes a user's password.
+ * Changes password for authenticated user.
  */
-exports.changePassword = async ({
-  userId,
-  currentPassword,
-  newPassword,
-}) => {
-  // TODO:
-  // - Verify current password
-  // - Hash new password
-  // - Update user record
-  // - Invalidate other sessions
+exports.changePassword = async ({ userId, currentPassword, newPassword }) => {
+  if (!userId || !currentPassword || !newPassword) {
+    throw new Error("Missing password change fields");
+  }
 
-  throw new Error("Not implemented");
+  // TODO (DB layer):
+  // - verify current password
+  // - hash new password
+  // - update user
+  // - invalidate other sessions
 };
-
-/**
- * startPasswordReset
- *
- * Initiates password reset flow.
- */
-exports.startPasswordReset = async ({ identifier }) => {
-  // TODO:
-  // - Generate reset token
-  // - Persist token with expiration
-  // - Send reset email (future)
-
-  throw new Error("Not implemented");
-};
-
-/**
- * resetPassword
- *
- * Completes password reset flow using a reset token.
- */
-exports.resetPassword = async ({ resetToken, newPassword }) => {
-  // TODO:
-  // - Validate reset token
-  // - Hash new password
-  // - Update user record
-  // - Invalidate reset token
-  // - Invalidate all sessions
-
-  throw new Error("Not implemented");
-};
-
-/* -------------------------------------------------------------------------- */
-/*                             Internal Utilities                               */
-/* -------------------------------------------------------------------------- */
-
-/**
- * computeSessionExpiration
- *
- * Returns a Date representing session expiration.
- */
-function computeSessionExpiration() {
-  // TODO:
-  // - Return now + session duration
-
-  throw new Error("Not implemented");
-}
-
-/**
- * normalizeIdentifier
- *
- * Normalizes usernames/emails for comparison.
- */
-function normalizeIdentifier(identifier) {
-  // TODO:
-  // - Trim whitespace
-  // - Lowercase email if applicable
-
-  throw new Error("Not implemented");
-}

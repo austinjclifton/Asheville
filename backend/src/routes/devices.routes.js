@@ -1,149 +1,47 @@
+"use strict";
+
+/**
+ * Device Routes
+ *
+ * Responsibilities:
+ * - Define HTTP routes and apply middleware (wiring only)
+ * - Delegate request handling to controllers
+ */
+
 const express = require("express");
 const { requireAuth } = require("../middleware/requireAuth.js");
-const deviceService = require("../services/device.service.js");
+const deviceController = require("../controllers/device.controller.js");
 
 const router = express.Router();
 
 /**
- * GET /devices
- *
- * Behavior:
- * - Returns all devices belonging to hives owned by the user
+ * List devices
+ * GET /api/devices
  */
-router.get("/", requireAuth, async (req, res, next) => {
-  try {
-    const devices = await deviceService.getDevicesForUser(req.user.id);
-    res.status(200).json({ devices });
-  } catch (err) {
-    next(err);
-  }
-});
+router.get("/", requireAuth, deviceController.list);
 
 /**
- * POST /devices
- *
- * Body:
- * {
- *   hiveId: number
- * }
- *
- * Behavior:
- * - Creates a new device attached to a hive
- * - installed_at is set by the service
+ * Create device
+ * POST /api/devices
  */
-router.post("/", requireAuth, async (req, res, next) => {
-  try {
-    const { hiveId } = req.body ?? {};
-
-    if (!hiveId) {
-      return res.status(400).json({
-        error: "hiveId is required",
-      });
-    }
-
-    const device = await deviceService.createDevice({
-      hiveId,
-      beekeeperId: req.user.id,
-    });
-
-    if (!device) {
-      return res.status(404).json({
-        error: "Hive not found",
-      });
-    }
-
-    res.status(201).json({ device });
-  } catch (err) {
-    next(err);
-  }
-});
+router.post("/", requireAuth, deviceController.create);
 
 /**
- * GET /devices/:deviceId
- *
- * Behavior:
- * - Returns a device if it belongs to the authenticated user
+ * Get device
+ * GET /api/devices/:deviceId
  */
-router.get("/:deviceId", requireAuth, async (req, res, next) => {
-  try {
-    const { deviceId } = req.params;
-
-    const device = await deviceService.getDeviceById(deviceId, req.user.id);
-
-    if (!device) {
-      return res.status(404).json({
-        error: "Device not found",
-      });
-    }
-
-    res.status(200).json({ device });
-  } catch (err) {
-    next(err);
-  }
-});
+router.get("/:deviceId", requireAuth, deviceController.get);
 
 /**
- * PUT /devices/:deviceId
- *
- * Body:
- * {
- *   active?: boolean
- * }
- *
- * Behavior:
- * - Allows enabling/disabling a device
- * - Does NOT allow changing hive_id or timestamps
+ * Update device
+ * PUT /api/devices/:deviceId
  */
-router.put("/:deviceId", requireAuth, async (req, res, next) => {
-  try {
-    const { deviceId } = req.params;
-    const { active } = req.body ?? {};
-
-    if (active === undefined) {
-      return res.status(400).json({
-        error: "active flag is required",
-      });
-    }
-
-    const updated = await deviceService.updateDevice(deviceId, req.user.id, {
-      active,
-    });
-
-    if (!updated) {
-      return res.status(404).json({
-        error: "Device not found",
-      });
-    }
-
-    res.status(200).json({ device: updated });
-  } catch (err) {
-    next(err);
-  }
-});
+router.put("/:deviceId", requireAuth, deviceController.update);
 
 /**
- * DELETE /devices/:deviceId
- *
- * Behavior:
- * - Deletes a device owned by the user
- * - Readings cascade via FK
+ * Delete device
+ * DELETE /api/devices/:deviceId
  */
-router.delete("/:deviceId", requireAuth, async (req, res, next) => {
-  try {
-    const { deviceId } = req.params;
-
-    const deleted = await deviceService.deleteDevice(deviceId, req.user.id);
-
-    if (!deleted) {
-      return res.status(404).json({
-        error: "Device not found",
-      });
-    }
-
-    res.status(200).json({ success: true });
-  } catch (err) {
-    next(err);
-  }
-});
+router.delete("/:deviceId", requireAuth, deviceController.remove);
 
 module.exports = router;

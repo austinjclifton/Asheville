@@ -1,16 +1,30 @@
+"use strict";
+
 /**
- * Session auth middleware:
+ * requireAuth middleware
+ *
  * Purpose:
- * - validates session, binds request context, attaches user
+ * - Enforce authentication on protected routes
+ * - Validate session token
+ * - Attach authenticated user and session context to the request
+ *
+ * Guarantees for downstream handlers:
+ * - req.user is defined
+ * - req.session = { id, expiresAt }
+ *
+ * This middleware:
+ * - Does NOT know about cookies beyond extracting the token
+ * - Does NOT perform DB access
+ * - Delegates all validation to the auth service
  */
 
-const sessionService = require("../services/session.service");
+const authService = require("../services/auth.service.js");
 
 exports.requireAuth = async (req, res, next) => {
   try {
-    const sessionId = req.cookies?.sessionId;
+    const sessionToken = req.cookies?.sessionId;
 
-    if (!sessionId) {
+    if (!sessionToken) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
@@ -19,21 +33,24 @@ exports.requireAuth = async (req, res, next) => {
       userAgent: req.get("user-agent"),
     };
 
-    const session = await sessionService.validateSession(sessionId, context);
+    const result = await authService.getSessionContext({
+      sessionToken,
+      context,
+    });
 
-    if (!session) {
+    if (!result || !result.user || !result.session) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // hard guarantees for downstream code
-    req.user = session.user;
+    // Hard guarantees for downstream code
+    req.user = result.user;
     req.session = {
-      id: session.id,
-      expiresAt: session.expiresAt,
+      id: result.session.id,
+      expiresAt: result.session.expiresAt,
     };
 
-    next();
+    return next();
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };

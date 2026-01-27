@@ -1,144 +1,47 @@
+"use strict";
+
+/**
+ * Hive Routes
+ *
+ * Responsibilities:
+ * - Define HTTP routes and apply middleware (wiring only)
+ * - Delegate request handling to controllers
+ */
+
 const express = require("express");
 const { requireAuth } = require("../middleware/requireAuth.js");
-const hiveService = require("../services/hive.service.js");
+const hiveController = require("../controllers/hive.controller.js");
 
 const router = express.Router();
 
 /**
- * GET /hives
- *
- * Behavior:
- * - Returns all hives owned by the authenticated user
+ * List hives
+ * GET /api/hives
  */
-router.get("/", requireAuth, async (req, res, next) => {
-  try {
-    const hives = await hiveService.getHivesForUser(req.user.id);
-    res.status(200).json({ hives });
-  } catch (err) {
-    next(err);
-  }
-});
+router.get("/", requireAuth, hiveController.list);
 
 /**
- * POST /hives
- *
- * Body:
- * {
- *   name: string,
- *   notes?: string
- * }
- *
- * Behavior:
- * - Creates a new hive owned by the authenticated user
+ * Create hive
+ * POST /api/hives
  */
-router.post("/", requireAuth, async (req, res, next) => {
-  try {
-    const { name, notes } = req.body ?? {};
-
-    if (!name) {
-      return res.status(400).json({
-        error: "Hive name is required",
-      });
-    }
-
-    const hive = await hiveService.createHive({
-      beekeeperId: req.user.id,
-      name,
-      notes: notes ?? null,
-    });
-
-    res.status(201).json({ hive });
-  } catch (err) {
-    next(err);
-  }
-});
+router.post("/", requireAuth, hiveController.create);
 
 /**
- * GET /hives/:hiveId
- *
- * Behavior:
- * - Returns a single hive if owned by the user
+ * Get hive
+ * GET /api/hives/:hiveId
  */
-router.get("/:hiveId", requireAuth, async (req, res, next) => {
-  try {
-    const { hiveId } = req.params;
-
-    const hive = await hiveService.getHiveById(hiveId, req.user.id);
-
-    if (!hive) {
-      return res.status(404).json({
-        error: "Hive not found",
-      });
-    }
-
-    res.status(200).json({ hive });
-  } catch (err) {
-    next(err);
-  }
-});
+router.get("/:hiveId", requireAuth, hiveController.get);
 
 /**
- * PUT /hives/:hiveId
- *
- * Body:
- * {
- *   name?: string,
- *   notes?: string
- * }
- *
- * Behavior:
- * - Updates hive metadata
+ * Update hive
+ * PUT /api/hives/:hiveId
  */
-router.put("/:hiveId", requireAuth, async (req, res, next) => {
-  try {
-    const { hiveId } = req.params;
-    const { name, notes } = req.body ?? {};
-
-    if (name === undefined && notes === undefined) {
-      return res.status(400).json({
-        error: "At least one field must be provided",
-      });
-    }
-
-    const updated = await hiveService.updateHive(hiveId, req.user.id, {
-      name,
-      notes,
-    });
-
-    if (!updated) {
-      return res.status(404).json({
-        error: "Hive not found",
-      });
-    }
-
-    res.status(200).json({ hive: updated });
-  } catch (err) {
-    next(err);
-  }
-});
+router.put("/:hiveId", requireAuth, hiveController.update);
 
 /**
- * DELETE /hives/:hiveId
- *
- * Behavior:
- * - Deletes a hive owned by the user
+ * Delete hive
+ * DELETE /api/hives/:hiveId
  */
-router.delete("/:hiveId", requireAuth, async (req, res, next) => {
-  try {
-    const { hiveId } = req.params;
-
-    const deleted = await hiveService.deleteHive(hiveId, req.user.id);
-
-    if (!deleted) {
-      return res.status(404).json({
-        error: "Hive not found",
-      });
-    }
-
-    res.status(200).json({ success: true });
-  } catch (err) {
-    next(err);
-  }
-});
+router.delete("/:hiveId", requireAuth, hiveController.remove);
 
 module.exports = router;

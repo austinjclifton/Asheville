@@ -1,96 +1,47 @@
+"use strict";
+
+/**
+ * Auth Routes
+ *
+ * Responsibilities:
+ * - Define HTTP routes and apply middleware (wiring only)
+ * - Delegate request handling to controllers
+ */
+
 const express = require("express");
-const authService = require("../services/auth.service.js");
 const { requireAuth } = require("../middleware/requireAuth.js");
+const authController = require("../controllers/auth.controller.js");
 
 const router = express.Router();
 
 /**
- * POST /auth/login
- *
- * Body:
- * {
- *   email: string,
- *   password: string
- * }
- *
- * Behavior:
- * - Validates credentials, creates session, sets session cookie
+ * Register
+ * POST /api/auth/register
  */
-router.post("/login", async (req, res, next) => {
-  try {
-    const { email, password } = req.body ?? {};
-
-    if (!email || !password) {
-      return res.status(400).json({
-        error: "Email and password are required",
-      });
-    }
-
-    const context = {
-      ip: req.ip,
-      userAgent: req.get("user-agent"),
-    };
-
-    const result = await authService.login(email, password, context);
-
-    if (!result) {
-      return res.status(401).json({
-        error: "Invalid credentials",
-      });
-    }
-
-    const { sessionId, user } = result;
-
-    res.cookie("sessionId", sessionId, {
-      httpOnly: true,
-      sameSite: "strict",
-      secure: process.env.NODE_ENV === "production",
-    });
-
-    res.status(200).json({
-      user,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+router.post("/register", authController.register);
 
 /**
- * POST /auth/logout
- *
- * Behavior:
- * - Invalidates current session only, clears session cookie
+ * Login
+ * POST /api/auth/login
  */
-router.post("/logout", requireAuth, async (req, res, next) => {
-  try {
-    await authService.logout(req.session.id);
-
-    res.clearCookie("sessionId");
-
-    res.status(200).json({
-      success: true,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+router.post("/login", authController.login);
 
 /**
- * GET /auth/me
- *
- * Behavior:
- * - Returns authenticated user context
- *
- * * * Used by frontend to bootstrap app state
+ * Logout (requires an active session)
+ * POST /api/auth/logout
  */
-router.get("/me", requireAuth, async (req, res, next) => {
-  try {
-    res.status(200).json({
-      user: req.user,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+router.post("/logout", requireAuth, authController.logout);
+
+/**
+ * Change password (requires an active session)
+ * POST /api/auth/change-password
+ */
+router.post("/change-password", requireAuth, authController.changePassword);
+
+/**
+ * Current user (bootstrap endpoint)
+ * GET /api/auth/me
+ */
+router.get("/me", requireAuth, authController.me);
 
 module.exports = router;

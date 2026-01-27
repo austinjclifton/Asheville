@@ -1,50 +1,29 @@
+"use strict";
+
+/**
+ * Session Routes
+ *
+ * Responsibilities:
+ * - Define HTTP routes and apply middleware (wiring only)
+ * - Delegate request handling to controllers
+ */
+
 const express = require("express");
 const { requireAuth } = require("../middleware/requireAuth.js");
-const sessionService = require("../services/session.service.js");
+const sessionController = require("../controllers/session.controller.js");
 
 const router = express.Router();
 
 /**
- * GET /sessions/current
- *
- * Behavior:
- * - Returns the currently authenticated session context
- *
- * * * Useful for debugging
+ * Current session
+ * GET /api/sessions/current
  */
-router.get("/current", requireAuth, async (req, res, next) => {
-  try {
-    res.status(200).json({
-      session: {
-        id: req.session.id,
-        expiresAt: req.session.expiresAt,
-      },
-      user: req.user,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+router.get("/current", requireAuth, sessionController.current);
 
 /**
- * DELETE /sessions/current
- *
- * Behavior:
- * - Invalidates the current session, clears session cookie
- *
+ * Invalidate current session
+ * DELETE /api/sessions/current
  */
-router.delete("/current", requireAuth, async (req, res, next) => {
-  try {
-    await sessionService.invalidateSession(req.session.id);
-
-    res.clearCookie("sessionId");
-
-    res.status(200).json({
-      success: true,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+router.delete("/current", requireAuth, sessionController.destroy);
 
 module.exports = router;
