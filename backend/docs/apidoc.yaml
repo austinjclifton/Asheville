@@ -1,14 +1,21 @@
 openapi: 3.0.3
+
 info:
   title: Beehive Monitoring API
-  description: |
-    API for ingesting beehive telemetry data and presenting it to authenticated users.
-    This specification covers both internal (frontend-facing) and external (hardware-facing) APIs.
   version: 1.0.0
+  description: |
+    API for monitoring beehives and ingesting telemetry data.
+
+    Auth model:
+    - Internal API (/api/*): session cookie (browser-based)
+    - External ingest API (/ingest/*): X-INGEST-KEY header
 
 servers:
   - url: http://localhost:4000
     description: Local development
+
+security:
+  - sessionCookie: []
 
 components:
   securitySchemes:
@@ -98,29 +105,41 @@ components:
           type: string
           format: date-time
 
-security:
-  - sessionCookie: []
-
 paths:
   /health:
     get:
       summary: Health check
-      description: Confirms the server is running.
+      security: []
       responses:
         "200":
-          description: Server is healthy
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                  timestamp:
-                    type: string
-                    format: date-time
+          description: Server is running
 
-  /auth/login:
+  /api/auth/register:
+    post:
+      summary: Register new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required: [email, username, password]
+              properties:
+                email:
+                  type: string
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "201":
+          description: User created
+        "400":
+          description: Invalid input
+        "409":
+          description: User already exists
+
+  /api/auth/login:
     post:
       summary: Log in
       security: []
@@ -129,7 +148,6 @@ paths:
         content:
           application/json:
             schema:
-              type: object
               required: [email, password]
               properties:
                 email:
@@ -144,90 +162,69 @@ paths:
               description: Session cookie
               schema:
                 type: string
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  user:
-                    $ref: "#/components/schemas/User"
         "400":
           description: Missing credentials
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
         "401":
           description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
 
-  /auth/logout:
+  /api/auth/logout:
     post:
       summary: Log out
       responses:
         "200":
           description: Logged out
 
-  /auth/me:
+  /api/auth/change-password:
+    post:
+      summary: Change password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        "200":
+          description: Password updated
+        "401":
+          description: Invalid current password
+
+  /api/auth/me:
     get:
       summary: Get current user
+      description: Used by frontend on app load to bootstrap auth state
       responses:
         "200":
           description: Authenticated user
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  user:
-                    $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
 
-  /sessions/current:
+  /api/sessions/current:
     get:
       summary: Get current session
       responses:
         "200":
-          description: Current session
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  session:
-                    type: object
-                    properties:
-                      id:
-                        type: integer
-                      expiresAt:
-                        type: string
-                        format: date-time
-                  user:
-                    $ref: "#/components/schemas/User"
+          description: Session info
+        "401":
+          description: Not authenticated
 
     delete:
       summary: Invalidate current session
       responses:
         "200":
-          description: Session invalidated
+          description: Session destroyed
 
-  /hives:
+  /api/hives:
     get:
       summary: List hives
       responses:
         "200":
-          description: List of hives
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  hives:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Hive"
+          description: Hive list
 
     post:
       summary: Create hive
@@ -245,17 +242,10 @@ paths:
       responses:
         "201":
           description: Hive created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  hive:
-                    $ref: "#/components/schemas/Hive"
         "400":
           description: Invalid input
 
-  /hives/{hiveId}:
+  /api/hives/{hiveId}:
     get:
       summary: Get hive
       parameters:
@@ -267,13 +257,6 @@ paths:
       responses:
         "200":
           description: Hive
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  hive:
-                    $ref: "#/components/schemas/Hive"
         "404":
           description: Hive not found
 
@@ -312,21 +295,12 @@ paths:
         "200":
           description: Hive deleted
 
-  /devices:
+  /api/devices:
     get:
       summary: List devices
       responses:
         "200":
-          description: Devices
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  devices:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Device"
+          description: Device list
 
     post:
       summary: Create device
@@ -345,7 +319,7 @@ paths:
         "404":
           description: Hive not found
 
-  /devices/{deviceId}:
+  /api/devices/{deviceId}:
     get:
       summary: Get device
       parameters:
@@ -379,8 +353,6 @@ paths:
       responses:
         "200":
           description: Device updated
-        "404":
-          description: Device not found
 
     delete:
       summary: Delete device
@@ -394,9 +366,11 @@ paths:
         "200":
           description: Device deleted
 
-  /readings:
+  /api/readings:
     get:
       summary: Query readings
+      description: |
+        Exactly one of deviceId or hiveId should be provided.
       parameters:
         - name: deviceId
           in: query
@@ -423,19 +397,12 @@ paths:
       responses:
         "200":
           description: Readings
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  readings:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Reading"
 
-  /readings/latest:
+  /api/readings/latest:
     get:
       summary: Get latest reading
+      description: |
+        Exactly one of deviceId or hiveId should be provided.
       parameters:
         - name: deviceId
           in: query
@@ -454,6 +421,8 @@ paths:
   /ingest/reading:
     post:
       summary: Ingest telemetry (external)
+      description: |
+        Hardware-facing endpoint. Not used by frontend.
       security:
         - ingestKey: []
       requestBody:
