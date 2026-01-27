@@ -17,8 +17,8 @@
  * - Contain Express middleware
  */
 
-const usersRepo = require("../db/users.repo");
-const sessionsRepo = require("../db/sessions.repo");
+const usersRepo = require("../db/users.db");
+const sessionsRepo = require("../db/sessions.db");
 
 /* -------------------------------------------------------------------------- */
 /*                               Account Lifecycle                             */

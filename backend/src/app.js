@@ -7,6 +7,7 @@ const cors = require("cors");
 
 const healthRoutes = require("./routes/health.routes");
 const authRoutes = require("./routes/auth.routes");
+const { setupSwagger } = require("./swagger.js");
 
 const app = express();
 
@@ -17,6 +18,9 @@ app.use(express.json());
 // ----- Routes -----
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
+
+// ----- Swagger UI -----
+setupSwagger(app);
 
 // ----- Fallbacks -----
 app.use((req, res) => {
