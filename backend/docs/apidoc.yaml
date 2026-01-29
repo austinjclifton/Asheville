@@ -8,6 +8,8 @@ info:
 
     Auth model:
     - Internal API (/api/*): session cookie (browser-based)
+      - Cookie name: sessionId
+      - Cookie value: session.session_token (CHAR(64))
     - External ingest API (/ingest/*): X-INGEST-KEY header
 
 servers:
@@ -32,29 +34,63 @@ components:
   schemas:
     Error:
       type: object
+      additionalProperties: false
+      required: [error]
       properties:
         error:
           type: string
 
     User:
       type: object
+      additionalProperties: false
+      required: [id, username, email, phone, created_at, updated_at]
       properties:
         id:
           type: integer
+          format: int64
         username:
           type: string
+          maxLength: 50
         email:
           type: string
+          maxLength: 254
+        phone:
+          type: string
+          maxLength: 32
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Session:
+      type: object
+      additionalProperties: false
+      required: [id, expires_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        expires_at:
+          type: string
+          format: date-time
 
     Hive:
       type: object
+      additionalProperties: false
+      required: [id, beekeeper_id, name, notes, created_at, updated_at]
       properties:
         id:
           type: integer
+          format: int64
         beekeeper_id:
           type: integer
+          format: int64
         name:
           type: string
+          maxLength: 100
         notes:
           type: string
           nullable: true
@@ -67,11 +103,15 @@ components:
 
     Device:
       type: object
+      additionalProperties: false
+      required: [id, hive_id, installed_at, last_seen_at, active]
       properties:
         id:
           type: integer
+          format: int64
         hive_id:
           type: integer
+          format: int64
         installed_at:
           type: string
           format: date-time
@@ -85,11 +125,22 @@ components:
 
     Reading:
       type: object
+      additionalProperties: false
+      required:
+        - id
+        - device_id
+        - recorded_at
+        - temperature_c
+        - battery_voltage
+        - signal_strength
+        - created_at
       properties:
         id:
           type: integer
+          format: int64
         device_id:
           type: integer
+          format: int64
         recorded_at:
           type: string
           format: date-time
@@ -123,6 +174,8 @@ paths:
         content:
           application/json:
             schema:
+              type: object
+              additionalProperties: false
               required: [email, username, password]
               properties:
                 email:
@@ -134,10 +187,22 @@ paths:
       responses:
         "201":
           description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
         "400":
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "409":
           description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/auth/login:
     post:
@@ -148,6 +213,8 @@ paths:
         content:
           application/json:
             schema:
+              type: object
+              additionalProperties: false
               required: [email, password]
               properties:
                 email:
@@ -162,26 +229,55 @@ paths:
               description: Session cookie
               schema:
                 type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [user]
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
         "400":
           description: Missing credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/auth/logout:
     post:
       summary: Log out
+      security:
+        - sessionCookie: []
       responses:
         "200":
           description: Logged out
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/auth/change-password:
     post:
       summary: Change password
+      security:
+        - sessionCookie: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
+              type: object
+              additionalProperties: false
               required: [currentPassword, newPassword]
               properties:
                 currentPassword:
@@ -192,160 +288,297 @@ paths:
         "200":
           description: Password updated
         "401":
-          description: Invalid current password
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/auth/me:
     get:
       summary: Get current user
-      description: Used by frontend on app load to bootstrap auth state
+      security:
+        - sessionCookie: []
       responses:
         "200":
           description: Authenticated user
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [user]
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
         "401":
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/sessions/current:
     get:
       summary: Get current session
+      security:
+        - sessionCookie: []
       responses:
         "200":
           description: Session info
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [session, user]
+                properties:
+                  session:
+                    $ref: "#/components/schemas/Session"
+                  user:
+                    $ref: "#/components/schemas/User"
         "401":
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
     delete:
       summary: Invalidate current session
+      security:
+        - sessionCookie: []
       responses:
         "200":
           description: Session destroyed
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/hives:
     get:
       summary: List hives
+      security:
+        - sessionCookie: []
       responses:
         "200":
           description: Hive list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Hive"
 
     post:
       summary: Create hive
+      security:
+        - sessionCookie: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
+              type: object
+              additionalProperties: false
               required: [name]
               properties:
                 name:
                   type: string
                 notes:
                   type: string
+                  nullable: true
       responses:
         "201":
           description: Hive created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hive"
         "400":
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/hives/{hiveId}:
     get:
       summary: Get hive
+      security:
+        - sessionCookie: []
       parameters:
         - name: hiveId
           in: path
           required: true
           schema:
             type: integer
+            format: int64
       responses:
         "200":
           description: Hive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hive"
         "404":
           description: Hive not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
     put:
       summary: Update hive
+      security:
+        - sessionCookie: []
       parameters:
         - name: hiveId
           in: path
           required: true
           schema:
             type: integer
-      requestBody:
-        content:
-          application/json:
-            schema:
-              properties:
-                name:
-                  type: string
-                notes:
-                  type: string
-      responses:
-        "200":
-          description: Hive updated
-        "404":
-          description: Hive not found
-
-    delete:
-      summary: Delete hive
-      parameters:
-        - name: hiveId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Hive deleted
-
-  /api/devices:
-    get:
-      summary: List devices
-      responses:
-        "200":
-          description: Device list
-
-    post:
-      summary: Create device
+            format: int64
       requestBody:
         required: true
         content:
           application/json:
             schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                notes:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          description: Hive updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hive"
+        "404":
+          description: Hive not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      summary: Delete hive
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: hiveId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Hive deleted
+        "404":
+          description: Hive not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/devices:
+    get:
+      summary: List devices
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Device list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Device"
+
+    post:
+      summary: Create device
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
               required: [hiveId]
               properties:
                 hiveId:
                   type: integer
+                  format: int64
       responses:
         "201":
           description: Device created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
         "404":
           description: Hive not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/devices/{deviceId}:
     get:
       summary: Get device
+      security:
+        - sessionCookie: []
       parameters:
         - name: deviceId
           in: path
           required: true
           schema:
             type: integer
+            format: int64
       responses:
         "200":
           description: Device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
         "404":
           description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
     put:
       summary: Update device
+      security:
+        - sessionCookie: []
       parameters:
         - name: deviceId
           in: path
           required: true
           schema:
             type: integer
+            format: int64
       requestBody:
+        required: true
         content:
           application/json:
             schema:
+              type: object
+              additionalProperties: false
               required: [active]
               properties:
                 active:
@@ -353,33 +586,54 @@ paths:
       responses:
         "200":
           description: Device updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "404":
+          description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
     delete:
       summary: Delete device
+      security:
+        - sessionCookie: []
       parameters:
         - name: deviceId
           in: path
           required: true
           schema:
             type: integer
+            format: int64
       responses:
         "200":
           description: Device deleted
+        "404":
+          description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/readings:
     get:
       summary: Query readings
-      description: |
-        Exactly one of deviceId or hiveId should be provided.
+      security:
+        - sessionCookie: []
       parameters:
         - name: deviceId
           in: query
           schema:
             type: integer
+            format: int64
         - name: hiveId
           in: query
           schema:
             type: integer
+            format: int64
         - name: from
           in: query
           schema:
@@ -397,32 +651,46 @@ paths:
       responses:
         "200":
           description: Readings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Reading"
 
   /api/readings/latest:
     get:
       summary: Get latest reading
-      description: |
-        Exactly one of deviceId or hiveId should be provided.
+      security:
+        - sessionCookie: []
       parameters:
         - name: deviceId
           in: query
           schema:
             type: integer
+            format: int64
         - name: hiveId
           in: query
           schema:
             type: integer
+            format: int64
       responses:
         "200":
           description: Latest reading
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reading"
         "404":
           description: No readings found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /ingest/reading:
     post:
       summary: Ingest telemetry (external)
-      description: |
-        Hardware-facing endpoint. Not used by frontend.
       security:
         - ingestKey: []
       requestBody:
@@ -430,10 +698,13 @@ paths:
         content:
           application/json:
             schema:
+              type: object
+              additionalProperties: false
               required: [deviceId, recordedAt, temperatureC]
               properties:
                 deviceId:
                   type: integer
+                  format: int64
                 recordedAt:
                   type: string
                   format: date-time
@@ -441,14 +712,38 @@ paths:
                   type: number
                 batteryVoltage:
                   type: number
+                  nullable: true
                 signalStrength:
                   type: number
+                  nullable: true
       responses:
         "201":
           description: Reading ingested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reading"
         "400":
           description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Device not found or inactive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Duplicate reading
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
