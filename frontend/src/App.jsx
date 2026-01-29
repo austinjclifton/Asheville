@@ -1,36 +1,30 @@
-import { useEffect, useState } from "react";
-import { Container, Typography, Paper, CircularProgress } from "@mui/material";
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from "@mui/material";
+import CssBaseline from "@mui/material/CssBaseline";
+import { theme } from "./theme/theme";
+import HealthCheck from './pages/HealthCheck';
+import LoginPage from './pages/LoginPage';
+import Dashboard from './pages/Dashboard';
+import Analytics from './pages/Analytics';
+import Alerts from './pages/Alerts';
+import Settings from './pages/Settings';
 
 function App() {
-  const [status, setStatus] = useState(null);
-
-  useEffect(() => {
-    fetch("/api/health")
-      .then((res) => res.json())
-      .then((data) => setStatus(data))
-      .catch(() => setStatus({ ok: false, service: "Backend not connected" }));
-  }, []);
-
   return (
-    <Container sx={{ mt: 6 }}>
-      <Paper sx={{ p: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          Team Asheville
-        </Typography>
-
-        {!status ? (
-          <CircularProgress />
-        ) : (
-          <>
-            <Typography>
-              Backend service: <strong>{status.service}</strong>
-            </Typography>
-            <Typography>Status: {status.ok ? "OK" : "ERROR"}</Typography>
-            {status.time && <Typography>Server time: {status.time}</Typography>}
-          </>
-        )}
-      </Paper>
-    </Container>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Router>
+        <Routes>
+          <Route path="/health" element={<HealthCheck />} />
+          <Route path="/" element={<LoginPage />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/alerts" element={<Alerts />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+    </ThemeProvider>
   );
 }
 
