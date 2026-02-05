@@ -8,10 +8,12 @@
  * - Expose current session context
  * - Invalidate the current session
  *
- * Sessions are owned by the auth service.
+ * Notes:
+ * - Sessions are owned by SessionService
+ * - Authentication context is provided by requireAuth middleware
  */
 
-const authService = require("../services/auth.service.js");
+const sessionService = require("../services/sessions.service.js");
 
 /**
  * GET /api/sessions/current
@@ -36,9 +38,13 @@ exports.current = async (req, res) => {
  */
 exports.destroy = async (req, res, next) => {
   try {
-    await authService.logout({
-      sessionToken: req.cookies.sessionId,
-    });
+    const sessionToken = req.cookies?.sessionId;
+
+    if (sessionToken) {
+      await sessionService.invalidateSession({
+        sessionToken,
+      });
+    }
 
     res.clearCookie("sessionId");
 

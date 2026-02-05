@@ -4,7 +4,8 @@
  * Session Routes
  *
  * Responsibilities:
- * - Define HTTP routes and apply middleware (wiring only)
+ * - Define session-related HTTP endpoints
+ * - Apply authentication middleware
  * - Delegate request handling to controllers
  */
 
@@ -15,15 +16,10 @@ const sessionController = require("../controllers/session.controller.js");
 const router = express.Router();
 
 /**
- * Current session
  * GET /api/sessions/current
+ *
+ * Returns the current authenticated session context.
  */
 router.get("/current", requireAuth, sessionController.current);
-
-/**
- * Invalidate current session
- * DELETE /api/sessions/current
- */
-router.delete("/current", requireAuth, sessionController.destroy);
 
 module.exports = router;

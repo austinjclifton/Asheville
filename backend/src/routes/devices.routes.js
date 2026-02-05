@@ -10,7 +10,7 @@
 
 const express = require("express");
 const { requireAuth } = require("../middleware/requireAuth.js");
-const deviceController = require("../controllers/device.controller.js");
+const deviceController = require("../controllers/devices.controller.js");
 
 const router = express.Router();
 

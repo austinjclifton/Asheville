@@ -10,7 +10,7 @@
  * - Translate service results into HTTP responses
  */
 
-const deviceService = require("../services/device.service.js");
+const deviceService = require("../services/devices.service.js");
 
 /**
  * GET /api/devices

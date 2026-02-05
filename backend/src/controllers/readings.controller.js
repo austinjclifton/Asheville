@@ -10,7 +10,7 @@
  * - Translate service results into HTTP responses
  */
 
-const readingService = require("../services/reading.service.js");
+const readingService = require("../services/readings.service.js");
 
 /**
  * GET /api/readings

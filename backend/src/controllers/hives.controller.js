@@ -10,7 +10,7 @@
  * - Translate service results into HTTP responses
  */
 
-const hiveService = require("../services/hive.service.js");
+const hiveService = require("../services/hives.service.js");
 
 /**
  * GET /api/hives

@@ -10,7 +10,7 @@
 
 const express = require("express");
 const { requireAuth } = require("../middleware/requireAuth.js");
-const hiveController = require("../controllers/hive.controller.js");
+const hiveController = require("../controllers/hives.controller.js");
 
 const router = express.Router();
 

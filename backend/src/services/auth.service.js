@@ -4,155 +4,158 @@
  * Auth Service (MVP)
  *
  * Responsibilities:
- * - Own authentication flows (register, login, logout)
- * - Own session lifecycle at a business-rule level
- * - Stay HTTP-agnostic
+ * - Own authentication flows (register, login)
+ * - Enforce auth-related business rules
+ * - Delegate session lifecycle to SessionService
  *
- * This file intentionally:
- * - Contains ONLY exported service functions
- * - Uses minimal helpers inline
- * - Avoids premature abstractions
- *
- * DB/repository logic will be injected later.
+ * This service:
+ * - Is HTTP-agnostic
+ * - Does NOT manage cookies
+ * - Does NOT validate sessions for middleware
  */
 
-/* -------------------------------------------------------------------------- */
-/* Configuration                                                               */
-/* -------------------------------------------------------------------------- */
+const bcrypt = require("bcrypt");
 
-const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+const usersRepo = require("../db/users.db");
+const sessionService = require("./sessions.service.js");
 
-/* -------------------------------------------------------------------------- */
-/* Utilities (MVP-only, minimal)                                               */
-/* -------------------------------------------------------------------------- */
+const BCRYPT_ROUNDS = 12;
 
-function normalizeEmail(email) {
-  return typeof email === "string" ? email.trim().toLowerCase() : "";
-}
+/* ================================================================
+ * Register
+ * ================================================================ */
 
-function normalizeIdentifier(identifier) {
-  return typeof identifier === "string" ? identifier.trim() : "";
-}
-
-function computeSessionExpiration() {
-  return new Date(Date.now() + SESSION_DURATION_MS);
-}
-
-function generateSessionToken() {
-  const crypto = require("crypto");
-  return crypto.randomBytes(32).toString("hex");
-}
-
-/* -------------------------------------------------------------------------- */
-/* Public API                                                                  */
-/* -------------------------------------------------------------------------- */
-
-/**
- * register
- *
- * Creates a user and initial session.
- */
 exports.register = async ({ username, email, password, context }) => {
-  if (!username || !email || !password) {
-    throw new Error("Missing required registration fields");
+  validatePassword(password);
+
+  const existingEmail = await usersRepo.findByEmail(email);
+  if (existingEmail) {
+    const err = new Error("Email already in use");
+    err.status = 409;
+    throw err;
   }
 
-  const normalizedEmail = normalizeEmail(email);
+  const existingUsername = await usersRepo.findByUsername(username);
+  if (existingUsername) {
+    const err = new Error("Username already in use");
+    err.status = 409;
+    throw err;
+  }
 
-  // TODO (DB layer):
-  // - ensure username/email uniqueness
-  // - hash password
-  // - create user
-  // - persist session
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-  const user = null; // placeholder
-  const session = {
-    id: null,
-    token: generateSessionToken(),
-    expiresAt: computeSessionExpiration(),
+  const user = await usersRepo.create({
+    username,
+    email,
+    passwordHash,
+  });
+
+  const session = await sessionService.createSession({
+    beekeeperId: user.id,
+    context,
+  });
+
+  return {
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+    },
+    session,
   };
-
-  return { user, session };
 };
 
-/**
- * login
- *
- * Authenticates a user and creates a session.
- */
+/* ================================================================
+ * Login
+ * ================================================================ */
+
 exports.login = async ({ identifier, password, context }) => {
-  if (!identifier || !password) {
-    throw new Error("Missing credentials");
+  const user =
+    (await usersRepo.findByEmail(identifier)) ||
+    (await usersRepo.findByUsername(identifier));
+
+  if (!user) {
+    const err = new Error("Invalid credentials");
+    err.status = 401;
+    throw err;
   }
 
-  const normalizedIdentifier = normalizeIdentifier(identifier);
+  // Do NOT validate password policy on login
+  const valid = await bcrypt.compare(password, user.password_hash);
+  if (!valid) {
+    const err = new Error("Invalid credentials");
+    err.status = 401;
+    throw err;
+  }
 
-  // TODO (DB layer):
-  // - resolve identifier (email vs username)
-  // - load user
-  // - verify password hash
-  // - persist session
+  await sessionService.invalidateAllSessionsForUser({
+    beekeeperId: user.id,
+  });
 
-  const user = null; // placeholder
-  const session = {
-    id: null,
-    token: generateSessionToken(),
-    expiresAt: computeSessionExpiration(),
+  const session = await sessionService.createSession({
+    beekeeperId: user.id,
+    context,
+  });
+
+  return {
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+    },
+    session,
   };
-
-  return { user, session };
 };
 
-/**
- * logout
- *
- * Invalidates a single session.
- */
-exports.logout = async ({ sessionToken }) => {
-  if (!sessionToken) {
-    throw new Error("sessionToken is required");
-  }
+/* ================================================================
+ * Change password
+ * ================================================================ */
 
-  // TODO (DB layer):
-  // - invalidate session by token
-};
-
-/**
- * getSessionContext
- *
- * Validates a session token and returns user + session.
- * Used exclusively by auth middleware.
- */
-exports.getSessionContext = async ({ sessionToken }) => {
-  if (!sessionToken) {
-    throw new Error("sessionToken is required");
-  }
-
-  // TODO (DB layer):
-  // - load session by token
-  // - verify active + not expired
-  // - load user
-  // - update last activity
-
-  const user = null; // placeholder
-  const session = null; // placeholder
-
-  return { user, session };
-};
-
-/**
- * changePassword
- *
- * Changes password for authenticated user.
- */
 exports.changePassword = async ({ userId, currentPassword, newPassword }) => {
-  if (!userId || !currentPassword || !newPassword) {
-    throw new Error("Missing password change fields");
+  validatePassword(newPassword);
+
+  const user = await usersRepo.findById(userId);
+  if (!user) {
+    const err = new Error("User not found");
+    err.status = 404;
+    throw err;
   }
 
-  // TODO (DB layer):
-  // - verify current password
-  // - hash new password
-  // - update user
-  // - invalidate other sessions
+  const fullUser = await usersRepo.findByEmail(user.email);
+
+  const valid = await bcrypt.compare(currentPassword, fullUser.password_hash);
+
+  if (!valid) {
+    const err = new Error("Current password incorrect");
+    err.status = 401;
+    throw err;
+  }
+
+  const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+
+  await usersRepo.updatePasswordHash(userId, newHash);
+
+  await sessionService.invalidateAllSessionsForUser({
+    beekeeperId: userId,
+  });
 };
+
+function validatePassword(password) {
+  if (typeof password !== "string") {
+    const err = new Error("Invalid password");
+    err.status = 400;
+    throw err;
+  }
+  if (password.length < 8) {
+    const err = new Error("Password must be at least 8 characters");
+    err.status = 400;
+    throw err;
+  }
+  if (password.length > 72) {
+    const err = new Error(
+      "Password must be at most 72 characters (bcrypt limit)",
+    );
+    err.status = 400;
+    throw err;
+  }
+}

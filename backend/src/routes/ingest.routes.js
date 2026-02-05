@@ -1,5 +1,5 @@
 const express = require("express");
-const ingestService = require("../services/ingest.service.js");
+const ingestService = require("../services/readings.service.js");
 
 const router = express.Router();
 
@@ -31,6 +31,9 @@ const router = express.Router();
  *
  * Failure is explicit and loud.
  */
+
+//device_id, temperature_c, -> recorded_at which is now()
+
 router.post("/reading", async (req, res, next) => {
   try {
     /* ============================================================

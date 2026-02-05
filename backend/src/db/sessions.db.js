@@ -1,146 +1,120 @@
+"use strict";
+
 /**
  * Sessions Repository
- * Table: session
+ *
+ * Responsibilities:
+ * - Persist session records
+ * - Retrieve and mutate session state
+ * - Enforce data-level session invariants
+ *
+ * This repository:
+ * - Knows SQL
+ * - Knows table structure
+ * - Does NOT know business rules
  */
-
-"use strict";
 
 const { query } = require("./pool");
 
 /* ================================================================
- * Core session operations
+ * Creation
  * ================================================================ */
 
-/**
- * create
- *
- * Used by:
- * - login flow
- * - session refresh
- *
- * @param {Object} params
- * @param {number} params.beekeeperId
- * @param {string} params.sessionToken
- * @param {Date} params.expiresAt
- *
- * @returns {Object}
- */
 exports.create = async ({
   beekeeperId,
   sessionToken,
+  csrfToken,
   expiresAt,
 }) => {
-  const sql = `
-    INSERT INTO session (beekeeper_id, session_token, expires_at)
-    VALUES (?, ?, ?)
-  `;
+  const rows = await query(
+    `
+    INSERT INTO "session" (
+      beekeeper_id,
+      session_token,
+      csrf_token,
+      expires_at,
+      active,
+      created_at,
+      last_activity_at
+    )
+    VALUES ($1, $2, $3, $4, TRUE, now(), now())
+    RETURNING *
+    `,
+    [beekeeperId, sessionToken, csrfToken, expiresAt]
+  );
 
-  const [result] = await query(sql, [
-    beekeeperId,
-    sessionToken,
-    expiresAt,
-  ]);
-
-  return exports.findById(result.insertId);
+  return rows[0];
 };
 
-/**
- * findByToken
- *
- * Used by:
- * - auth middleware
- * - session validation
- *
- * @param {string} sessionToken
- * @returns {Object|null}
- */
-exports.findByToken = async (sessionToken) => {
-  const sql = `SELECT * FROM session WHERE session_token = ?   AND active = 1 LIMIT 1`;
+/* ================================================================
+ * Lookups
+ * ================================================================ */
 
-  const [rows] = await query(sql, [sessionToken]);
+exports.findByToken = async (sessionToken) => {
+  const rows = await query(
+    `
+    SELECT *
+    FROM "session"
+    WHERE session_token = $1
+    LIMIT 1
+    `,
+    [sessionToken]
+  );
+
+  return rows[0] ?? null;
+};
+
+exports.findById = async (sessionId) => {
+  const rows = await query(
+    `
+    SELECT *
+    FROM "session"
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [sessionId]
+  );
+
   return rows[0] ?? null;
 };
 
 /* ================================================================
- * Direct lookups (STUBS)
+ * Invalidation
  * ================================================================ */
 
-/**
- * findById
- *
- * Intended for:
- * - internal validation
- * - admin tooling
- */
-exports.findById = async (_id) => {
-  throw new Error("findById not implemented");
+exports.invalidate = async (sessionId) => {
+  await query(
+    `
+    UPDATE "session"
+    SET active = FALSE
+    WHERE id = $1
+    `,
+    [sessionId]
+  );
 };
 
-/**
- * findActiveByBeekeeper
- *
- * Intended for:
- * - multi-session support
- * - session management UIs
- */
-exports.findActiveByBeekeeper = async (_beekeeperId) => {
-  throw new Error("findActiveByBeekeeper not implemented");
+exports.invalidateAllForBeekeeper = async (beekeeperId) => {
+  await query(
+    `
+    UPDATE "session"
+    SET active = FALSE
+    WHERE beekeeper_id = $1
+    `,
+    [beekeeperId]
+  );
 };
 
 /* ================================================================
- * Session lifecycle (STUBS)
+ * Activity tracking
  * ================================================================ */
 
-/**
- * invalidate
- *
- * Intended for:
- * - logout
- * - forced session revocation
- *
- * @param {number} sessionId
- * @returns {void}
- */
-exports.invalidate = async (_sessionId) => {
-  throw new Error("invalidate not implemented");
-};
-
-/**
- * invalidateAllForBeekeeper
- *
- * Intended for:
- * - password change
- * - account security events
- */
-exports.invalidateAllForBeekeeper = async (_beekeeperId) => {
-  throw new Error("invalidateAllForBeekeeper not implemented");
-};
-
-/* ================================================================
- * Activity tracking (STUBS)
- * ================================================================ */
-
-/**
- * touch
- *
- * Updates last activity timestamp.
- *
- * Intended for:
- * - idle timeout enforcement
- * - analytics
- *
- * @param {number} sessionId
- */
-exports.touch = async (_sessionId) => {
-  throw new Error("touch not implemented");
-};
-
-/**
- * expireInactive
- *
- * Intended for:
- * - background cleanup jobs
- */
-exports.expireInactive = async () => {
-  throw new Error("expireInactive not implemented");
+exports.touch = async (sessionId) => {
+  await query(
+    `
+    UPDATE "session"
+    SET last_activity_at = now()
+    WHERE id = $1
+    `,
+    [sessionId]
+  );
 };

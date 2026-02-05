@@ -6,6 +6,8 @@ info:
   description: |
     API for monitoring beehives and ingesting telemetry data.
 
+    **Password recovery is not supported in MVP. Users must authenticate and change their password using their current password.**
+
     Auth model:
     - Internal API (/api/*): session cookie (browser-based)
       - Cookie name: sessionId

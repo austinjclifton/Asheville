@@ -1,47 +1,100 @@
+"use strict";
+
 /**
- * - Database Connection pool:
- * - Maintains a fixed set of open MySQL connections
- * - Reuses connections across queries instead of opening a new one each time
- * - Enforces a maximum number of concurrent DB connections
- * - Queues queries when all connections are busy
+ * Database Connection Pool (PostgreSQL)
  *
- * - This reduces connection overhead and prevents exhausting the DB.
+ * Responsibilities:
+ * - Maintain a shared pool of PostgreSQL connections
+ * - Reuse connections across queries
+ * - Enforce a maximum number of concurrent DB connections
+ * - Provide a thin query interface for repositories
+ * - Support explicit transactions when needed
+ *
+ * This file intentionally:
+ * - Contains NO business logic
+ * - Contains NO SQL beyond connection-level concerns
  */
 
-const mysql = require("mysql2/promise");
+const { Pool } = require("pg");
 
-const pool = mysql.createPool({
+/* -------------------------------------------------------------------------- */
+/* Pool Configuration                                                         */
+/* -------------------------------------------------------------------------- */
+
+const pool = new Pool({
   host: process.env.DB_HOST,
-  port: process.env.DB_PORT || 3306,
+  port: process.env.DB_PORT || 5432,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+
+  // Production-safe defaults
+  max: 10, // max concurrent connections
+  idleTimeoutMillis: 30_000, // close idle clients after 30s
+  connectionTimeoutMillis: 5_000, // fail fast if DB is unreachable
 });
+
+/* -------------------------------------------------------------------------- */
+/* Query Helper                                                               */
+/* -------------------------------------------------------------------------- */
 
 /**
  * query
  *
- * Thin wrapper around pool.query so repositories do not touch the pool directly.
+ * Thin wrapper around pool.query so repositories
+ * never touch the pool directly.
+ *
+ * @param {string} text   - SQL query with $1, $2 placeholders
+ * @param {Array} params  - Query parameters
+ * @returns {Array} rows
  */
-async function query(sql, params = []) {
-  const [rows] = await pool.query(sql, params);
-  return rows;
+async function query(text, params = []) {
+  const result = await pool.query(text, params);
+  return result.rows;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Transaction Helper                                                         */
+/* -------------------------------------------------------------------------- */
+
 /**
- * getConnection
+ * getClient
  *
- * Used for explicit transactions.
+ * Used for explicit transactions:
+ *
+ * const client = await getClient();
+ * try {
+ *   await client.query("BEGIN");
+ *   ...
+ *   await client.query("COMMIT");
+ * } catch (err) {
+ *   await client.query("ROLLBACK");
+ *   throw err;
+ * } finally {
+ *   client.release();
+ * }
  */
-async function getConnection() {
-  return pool.getConnection();
+async function getClient() {
+  return pool.connect();
 }
+
+/* -------------------------------------------------------------------------- */
+/* Shutdown Handling (Production hygiene)                                     */
+/* -------------------------------------------------------------------------- */
+
+let poolEnded = false;
+async function safeEndPool() {
+  if (!poolEnded) {
+    poolEnded = true;
+    await pool.end();
+  }
+}
+
+process.on("SIGTERM", safeEndPool);
+process.on("SIGINT", safeEndPool);
 
 module.exports = {
   pool,
   query,
-  getConnection,
+  getClient,
 };

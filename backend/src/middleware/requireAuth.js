@@ -3,51 +3,40 @@
 /**
  * requireAuth middleware
  *
- * Purpose:
- * - Enforce authentication on protected routes
- * - Validate session token
- * - Attach authenticated user and session context to the request
- *
- * Guarantees for downstream handlers:
+ * Guarantees for downstream handlers that:
  * - req.user is defined
- * - req.session = { id, expiresAt }
+ * - req.session is the full active session row
  *
- * This middleware:
- * - Does NOT know about cookies beyond extracting the token
- * - Does NOT perform DB access
- * - Delegates all validation to the auth service
+ * Responsibilities:
+ * - Extract session token from cookie
+ * - Delegate validation to SessionService
+ * - Attach resolved context to request
  */
 
-const authService = require("../services/auth.service.js");
+const sessionService = require("../services/sessions.service.js");
 
 exports.requireAuth = async (req, res, next) => {
   try {
     const sessionToken = req.cookies?.sessionId;
 
     if (!sessionToken) {
-      return res.status(401).json({ error: "Unauthorized" });
+      return res.status(401).json({
+        error: "Authentication required",
+      });
     }
 
-    const context = {
-      ip: req.ip,
-      userAgent: req.get("user-agent"),
-    };
-
-    const result = await authService.getSessionContext({
+    const context = await sessionService.validateSession({
       sessionToken,
-      context,
     });
 
-    if (!result || !result.user || !result.session) {
-      return res.status(401).json({ error: "Unauthorized" });
+    if (!context) {
+      return res.status(401).json({
+        error: "Invalid or expired session",
+      });
     }
 
-    // Hard guarantees for downstream code
-    req.user = result.user;
-    req.session = {
-      id: result.session.id,
-      expiresAt: result.session.expiresAt,
-    };
+    req.user = context.user;
+    req.session = context.session;
 
     return next();
   } catch (err) {

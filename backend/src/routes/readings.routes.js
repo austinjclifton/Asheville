@@ -10,7 +10,7 @@
 
 const express = require("express");
 const { requireAuth } = require("../middleware/requireAuth.js");
-const readingController = require("../controllers/reading.controller.js");
+const readingController = require("../controllers/readings.controller.js");
 
 const router = express.Router();
 
