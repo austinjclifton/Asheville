@@ -1,56 +1,110 @@
+"use strict";
+
 /**
  * Users Repository
  * Table: beekeeper
+ *
+ * Responsibilities:
+ * - Persist and retrieve beekeeper records
+ * - Control which columns are exposed per use-case
+ *
+ * This repository:
+ * - Knows SQL
+ * - Knows table structure
+ * - Does NOT know business rules
  */
-
-"use strict";
 
 const { query } = require("./pool");
 
 /* ================================================================
- * Core lookups
+ * Column definitions
+ * ================================================================ */
+
+const BASE_COLUMNS = `
+  id,
+  username,
+  email,
+  phone,
+  created_at,
+  updated_at
+`;
+
+const AUTH_COLUMNS = `
+  ${BASE_COLUMNS},
+  password_hash
+`;
+
+/* ================================================================
+ * Internal helpers
+ * ================================================================ */
+
+async function findOneBy({ column, value, includeAuth = false }) {
+  const columns = includeAuth ? AUTH_COLUMNS : BASE_COLUMNS;
+
+  const rows = await query(
+    `
+    SELECT ${columns}
+    FROM beekeeper
+    WHERE ${column} = $1
+    LIMIT 1
+    `,
+    [value],
+  );
+
+  return rows[0] ?? null;
+}
+
+/* ================================================================
+ * Lookups (public projections)
  * ================================================================ */
 
 exports.findById = async (id) => {
-  const rows = await query(
-    `
-    SELECT id, username, email, phone
-    FROM beekeeper
-    WHERE id = $1
-    LIMIT 1
-    `,
-    [id]
-  );
-
-  return rows[0] ?? null;
+  return findOneBy({
+    column: "id",
+    value: id,
+  });
 };
 
 exports.findByEmail = async (email) => {
-  const rows = await query(
-    `
-    SELECT *
-    FROM beekeeper
-    WHERE email = $1
-    LIMIT 1
-    `,
-    [email]
-  );
-
-  return rows[0] ?? null;
+  return findOneBy({
+    column: "email",
+    value: email,
+  });
 };
 
 exports.findByUsername = async (username) => {
-  const rows = await query(
-    `
-    SELECT *
-    FROM beekeeper
-    WHERE username = $1
-    LIMIT 1
-    `,
-    [username]
-  );
+  return findOneBy({
+    column: "username",
+    value: username,
+  });
+};
 
-  return rows[0] ?? null;
+/* ================================================================
+ * Lookups (auth projections)
+ * ================================================================ */
+
+exports.findAuthById = async (id) => {
+  return findOneBy({
+    column: "id",
+    value: id,
+    includeAuth: true,
+  });
+};
+
+exports.findAuthByEmail = async (email) => {
+  return findOneBy({
+    column: "email",
+    value: email,
+    includeAuth: true,
+  });
+};
+
+exports.findAuthByUsername = async (username) => {
+  return findOneBy({
+    column: "username",
+    value: username,
+    includeAuth: true,
+  });
 };
 
 /* ================================================================
@@ -62,9 +116,9 @@ exports.create = async ({ username, email, passwordHash }) => {
     `
     INSERT INTO beekeeper (username, email, password_hash)
     VALUES ($1, $2, $3)
-    RETURNING id, username, email, phone
+    RETURNING ${BASE_COLUMNS}
     `,
-    [username, email, passwordHash]
+    [username, email, passwordHash],
   );
 
   return rows[0];
@@ -75,26 +129,31 @@ exports.create = async ({ username, email, passwordHash }) => {
  * ================================================================ */
 
 exports.updatePasswordHash = async (id, passwordHash) => {
-  await query(
+  const result = await query(
     `
     UPDATE beekeeper
-    SET password_hash = $2
+    SET password_hash = $2,
+        updated_at = now()
     WHERE id = $1
     `,
-    [id, passwordHash]
+    [id, passwordHash],
   );
+
+  return result.rowCount === 1;
 };
 
-exports.findAuthById = async (id) => {
-  const rows = await query(
+/* ================================================================
+ * Deletion
+ * ================================================================ */
+
+exports.deleteById = async (id) => {
+  const result = await query(
     `
-    SELECT *
-    FROM beekeeper
+    DELETE FROM beekeeper
     WHERE id = $1
-    LIMIT 1
     `,
-    [id]
+    [id],
   );
 
-  return rows[0] ?? null;
+  return result.rowCount === 1;
 };

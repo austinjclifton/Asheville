@@ -2,6 +2,7 @@
 
 /**
  * Sessions Repository
+ * Table: "session"
  *
  * Responsibilities:
  * - Persist session records
@@ -12,9 +13,49 @@
  * - Knows SQL
  * - Knows table structure
  * - Does NOT know business rules
+ *
+ * Note:
+ * - Table name is quoted because "session" is a reserved keyword in SQL.
  */
 
 const { query } = require("./pool");
+
+/* ================================================================
+ * Column definitions
+ * ================================================================ */
+
+const BASE_COLUMNS = `
+  id,
+  beekeeper_id,
+  expires_at,
+  active,
+  created_at,
+  last_activity_at
+`;
+
+const AUTH_COLUMNS = `
+  ${BASE_COLUMNS},
+  session_token,
+  csrf_token
+`;
+
+/* ================================================================
+ * Internal helpers
+ * ================================================================ */
+
+async function findOneBy({ column, value, columns }) {
+  const rows = await query(
+    `
+    SELECT ${columns}
+    FROM "session"
+    WHERE ${column} = $1
+    LIMIT 1
+    `,
+    [value],
+  );
+
+  return rows[0] ?? null;
+}
 
 /* ================================================================
  * Creation
@@ -38,9 +79,9 @@ exports.create = async ({
       last_activity_at
     )
     VALUES ($1, $2, $3, $4, TRUE, now(), now())
-    RETURNING *
+    RETURNING ${AUTH_COLUMNS}
     `,
-    [beekeeperId, sessionToken, csrfToken, expiresAt]
+    [beekeeperId, sessionToken, csrfToken, expiresAt],
   );
 
   return rows[0];
@@ -50,58 +91,66 @@ exports.create = async ({
  * Lookups
  * ================================================================ */
 
-exports.findByToken = async (sessionToken) => {
-  const rows = await query(
-    `
-    SELECT *
-    FROM "session"
-    WHERE session_token = $1
-    LIMIT 1
-    `,
-    [sessionToken]
-  );
-
-  return rows[0] ?? null;
+exports.findById = async (sessionId) => {
+  return findOneBy({
+    column: "id",
+    value: sessionId,
+    columns: BASE_COLUMNS,
+  });
 };
 
-exports.findById = async (sessionId) => {
-  const rows = await query(
-    `
-    SELECT *
-    FROM "session"
-    WHERE id = $1
-    LIMIT 1
-    `,
-    [sessionId]
-  );
-
-  return rows[0] ?? null;
+exports.findByToken = async (sessionToken) => {
+  return findOneBy({
+    column: "session_token",
+    value: sessionToken,
+    columns: AUTH_COLUMNS,
+  });
 };
 
 /* ================================================================
- * Invalidation
+ * Invalidation (soft delete)
  * ================================================================ */
 
 exports.invalidate = async (sessionId) => {
-  await query(
+  const result = await query(
     `
     UPDATE "session"
     SET active = FALSE
     WHERE id = $1
     `,
-    [sessionId]
+    [sessionId],
   );
+
+  return result.rowCount === 1;
 };
 
 exports.invalidateAllForBeekeeper = async (beekeeperId) => {
-  await query(
+  const result = await query(
     `
     UPDATE "session"
     SET active = FALSE
     WHERE beekeeper_id = $1
     `,
-    [beekeeperId]
+    [beekeeperId],
   );
+
+  return result.rowCount > 0;
+};
+
+/* ================================================================
+ * Deletion (hard delete)
+ * ================================================================ */
+
+exports.deleteAllForBeekeeper = async (beekeeperId) => {
+  const result = await query(
+    `
+    DELETE FROM "session"
+    WHERE beekeeper_id = $1
+    `,
+    [beekeeperId],
+  );
+
+  return result.rowCount > 0;
 };
 
 /* ================================================================
@@ -109,12 +158,14 @@ exports.invalidateAllForBeekeeper = async (beekeeperId) => {
  * ================================================================ */
 
 exports.touch = async (sessionId) => {
-  await query(
+  const result = await query(
     `
     UPDATE "session"
     SET last_activity_at = now()
     WHERE id = $1
     `,
-    [sessionId]
+    [sessionId],
   );
+
+  return result.rowCount === 1;
 };
