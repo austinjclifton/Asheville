@@ -97,6 +97,12 @@ CREATE INDEX idx_session_expires
 CREATE INDEX idx_session_token_active
   ON session (session_token, active);
 
+CREATE TABLE password_reset_token (
+  user_id BIGINT PRIMARY KEY,
+  token_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE FUNCTION set_updated_at()
 RETURNS trigger AS $$
 BEGIN
