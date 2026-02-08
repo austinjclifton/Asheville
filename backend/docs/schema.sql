@@ -63,9 +63,6 @@ CREATE TABLE reading (
     CHECK (battery_voltage IS NULL OR battery_voltage >= 0)
 );
 
-CREATE INDEX idx_reading_device_recorded_at_desc
-  ON reading (device_id, recorded_at DESC);
-
 CREATE INDEX idx_reading_recorded_at
   ON reading (recorded_at);
 
