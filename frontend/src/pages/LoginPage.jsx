@@ -5,7 +5,7 @@ export default function LoginPage() {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    // Add authentication logic here later
+    //Add authentication logic here later
     navigate('/dashboard');
   };
 

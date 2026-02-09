@@ -4,12 +4,12 @@ import { LineChart } from '@mui/x-charts/LineChart';
 import { BarChart } from '@mui/x-charts/BarChart';
 import { PieChart } from '@mui/x-charts/PieChart';
 
-// Dummy data for weekly temperature trends
+//Dummy data for weekly temperature trends
 const weeklyDaysData = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const weeklyHiveTemp = [93.5, 94.2, 93.8, 94.5, 95.1, 94.8, 94.9];
 const weeklyExternalTemp = [75.3, 78.1, 76.5, 79.2, 80.8, 81.3, 81.9];
 
-// Dummy data for monthly temperature trends
+//Dummy data for monthly temperature trends
 const monthlyDaysData = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29];
 const monthlyHiveTemp = [
   92.1, 92.8, 93.2, 93.5, 93.8, 94.1, 94.3, 94.5, 
@@ -20,18 +20,18 @@ const monthlyExternalTemp = [
   79.5, 80.1, 80.8, 81.2, 81.5, 81.7, 81.9
 ];
 
-// Dummy data for temperature distribution (bar chart)
+//Dummy data for temperature distribution (bar chart)
 const tempRanges = ['88-90°F', '90-92°F', '92-94°F', '94-96°F', '96-98°F'];
 const tempDistribution = [5, 15, 35, 30, 15];
 
-// Dummy data for status breakdown
+//Dummy data for status breakdown
 const statusData = [
   { id: 0, value: 420, label: 'Normal', color: '#22c55e' },
   { id: 1, value: 65, label: 'Warning', color: '#f59e0b' },
   { id: 2, value: 23, label: 'Critical', color: '#ef4444' },
 ];
 
-// Dummy data for hourly variance
+//Dummy data for hourly variance
 const hoursData = Array.from({ length: 24 }, (_, i) => `${i}:00`);
 const varianceData = [
   1.2, 1.1, 0.9, 0.8, 0.7, 0.9, 1.1, 1.3, 1.5, 1.8, 2.1, 2.3,

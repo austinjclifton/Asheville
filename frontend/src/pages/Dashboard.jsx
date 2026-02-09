@@ -2,7 +2,7 @@ import Navigation from "../components/Navigation";
 import { LineChart } from '@mui/x-charts/LineChart';
 import { PieChart } from '@mui/x-charts/PieChart';
 
-// Dummy data for 24-hour temperature tracking
+//Dummy data for 24-hour temperature tracking
 const hoursData = [
   '12am', '1am', '2am', '3am', '4am', '5am', 
   '6am', '7am', '8am', '9am', '10am', '11am',
@@ -21,7 +21,7 @@ const externalTemperatureData = [
   81.2, 81.7, 81.9
 ];
 
-// Dummy data for status breakdown
+//Dummy data for status breakdown
 const statusData = [
   { id: 0, value: 85, label: 'Normal', color: '#22c55e' },
   { id: 1, value: 10, label: 'Warning', color: '#f59e0b' },
