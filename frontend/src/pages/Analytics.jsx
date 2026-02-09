@@ -50,9 +50,6 @@ export default function Analytics() {
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '5px' }}>
             Analytics
           </h1>
-          <p style={{ fontSize: '14px', color: '#94a3b8' }}>
-            Displaying dummy data for demonstration
-          </p>
         </div>
         
         <div style={{ 
