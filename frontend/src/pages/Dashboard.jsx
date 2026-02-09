@@ -1,4 +1,32 @@
 import Navigation from "../components/Navigation";
+import { LineChart } from '@mui/x-charts/LineChart';
+import { PieChart } from '@mui/x-charts/PieChart';
+
+// Dummy data for 24-hour temperature tracking
+const hoursData = [
+  '12am', '1am', '2am', '3am', '4am', '5am', 
+  '6am', '7am', '8am', '9am', '10am', '11am',
+  '12pm', '1pm', '2pm'
+];
+
+const hiveTemperatureData = [
+  93.2, 92.8, 92.5, 92.3, 92.1, 92.4,
+  92.8, 93.5, 94.2, 94.8, 95.1, 95.3,
+  95.0, 94.7, 94.9
+];
+
+const externalTemperatureData = [
+  65.2, 64.1, 63.5, 62.8, 62.3, 63.1,
+  65.4, 68.2, 71.5, 75.3, 78.8, 80.5,
+  81.2, 81.7, 81.9
+];
+
+// Dummy data for status breakdown
+const statusData = [
+  { id: 0, value: 85, label: 'Normal', color: '#22c55e' },
+  { id: 1, value: 10, label: 'Warning', color: '#f59e0b' },
+  { id: 2, value: 5, label: 'Critical', color: '#ef4444' },
+];
 
 export default function Dashboard() {
   return (
@@ -10,6 +38,9 @@ export default function Dashboard() {
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '5px' }}>
             Dashboard
           </h1>
+          <p style={{ fontSize: '14px', color: '#94a3b8' }}>
+            Displaying dummy data for demonstration
+          </p>
         </div>
         
         <div style={{ 
@@ -85,18 +116,32 @@ export default function Dashboard() {
         
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '15px' }}>
-            Temperature Activity
+            Temperature Activity (Last 24 Hours)
           </h2>
-          <div style={{ background: 'white', padding: '20px', borderRadius: '8px', height: '300px' }}>
-            <div style={{ 
-              height: '100%', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              color: '#94a3b8'
-            }}>
-              Chart Placeholder
-            </div>
+          <div style={{ background: 'white', padding: '20px', borderRadius: '8px' }}>
+            <LineChart
+              xAxis={[{ 
+                scaleType: 'point', 
+                data: hoursData,
+                label: 'Time'
+              }]}
+              series={[
+                {
+                  data: hiveTemperatureData,
+                  label: 'Hive Temperature',
+                  color: '#f59e0b',
+                  curve: 'natural'
+                },
+                {
+                  data: externalTemperatureData,
+                  label: 'External Temperature',
+                  color: '#3b82f6',
+                  curve: 'natural'
+                }
+              ]}
+              height={300}
+              margin={{ left: 50, right: 20, top: 20, bottom: 50 }}
+            />
           </div>
         </div>
         
@@ -117,9 +162,16 @@ export default function Dashboard() {
           
           <div style={{ background: 'white', padding: '20px', borderRadius: '8px' }}>
             <h3 style={{ fontWeight: 'bold', marginBottom: '15px' }}>Status Breakdown</h3>
-            <div style={{ fontSize: '14px', color: '#64748b' }}>
-              Status information placeholder
-            </div>
+            <PieChart
+              series={[
+                {
+                  data: statusData,
+                  highlightScope: { faded: 'global', highlighted: 'item' },
+                  faded: { innerRadius: 30, additionalRadius: -30, color: 'gray' },
+                }
+              ]}
+              height={200}
+            />
           </div>
         </div>
       </main>
