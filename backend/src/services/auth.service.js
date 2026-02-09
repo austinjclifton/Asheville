@@ -95,11 +95,6 @@ exports.login = async ({ identifier, password, context }) => {
     throw unauthorized("Invalid credentials");
   }
 
-  // Auth rule: only one active session per user
-  await sessionService.invalidateAllSessionsForUser({
-    beekeeperId: Number(user.id),
-  });
-
   const session = await sessionService.createSession({
     beekeeperId: Number(user.id),
     context,
