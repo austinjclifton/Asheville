@@ -6,13 +6,26 @@ info:
   description: |
     API for monitoring beehives and ingesting telemetry data.
 
-    **Password recovery is not supported in MVP. Users must authenticate and change their password using their current password.**
+    ## Authentication & Security Model
 
-    Auth model:
-    - Internal API (/api/*): session cookie (browser-based)
-      - Cookie name: sessionId
-      - Cookie value: session.session_token (CHAR(64))
-    - External ingest API (/ingest/*): X-INGEST-KEY header
+    This API uses **two distinct security models**:
+
+    **1) Internal API (`/api/*`) — Browser/session based**
+    - Authentication is maintained via an **HttpOnly cookie**:
+      - Cookie name: `sessionId`
+      - Cookie value: the server-issued session token
+    - CSRF protection is enforced for **authenticated, state-changing** operations:
+      - CSRF token is returned by:
+        - `POST /api/auth/register`
+        - `POST /api/auth/login`
+        - `GET /api/auth/csrf`
+      - Clients must send the token on protected requests using:
+        - Header: `X-CSRF-Token: <token>`
+    - Sessions are **per-device/per-browser**; multiple concurrent sessions are supported.
+
+    **2) External ingest API (`/ingest/*`) — Device key**
+    - Devices authenticate using an API key header:
+      - Header: `X-INGEST-KEY`
 
 servers:
   - url: http://localhost:4000
@@ -28,6 +41,11 @@ components:
       in: cookie
       name: sessionId
 
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+
     ingestKey:
       type: apiKey
       in: header
@@ -41,6 +59,14 @@ components:
       properties:
         error:
           type: string
+
+    Success:
+      type: object
+      additionalProperties: false
+      required: [success]
+      properties:
+        success:
+          type: boolean
 
     User:
       type: object
@@ -70,14 +96,47 @@ components:
     Session:
       type: object
       additionalProperties: false
-      required: [id, expires_at]
+      required: [expiresAt]
       properties:
-        id:
-          type: integer
-          format: int64
-        expires_at:
+        expiresAt:
           type: string
           format: date-time
+
+    AuthResponse:
+      type: object
+      additionalProperties: false
+      required: [user, csrfToken]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        csrfToken:
+          type: string
+
+    MeResponse:
+      type: object
+      additionalProperties: false
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+
+    CsrfResponse:
+      type: object
+      additionalProperties: false
+      required: [csrfToken]
+      properties:
+        csrfToken:
+          type: string
+
+    CurrentSessionResponse:
+      type: object
+      additionalProperties: false
+      required: [user, session]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        session:
+          $ref: "#/components/schemas/Session"
 
     Hive:
       type: object
@@ -188,11 +247,16 @@ paths:
                   type: string
       responses:
         "201":
-          description: User created
+          description: User created and authenticated session established
+          headers:
+            Set-Cookie:
+              description: Session cookie (HttpOnly)
+              schema:
+                type: string
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/AuthResponse"
         "400":
           description: Invalid input
           content:
@@ -217,29 +281,25 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [email, password]
+              required: [identifier, password]
               properties:
-                email:
+                identifier:
                   type: string
+                  description: Username or email (whichever is supported by the server)
                 password:
                   type: string
       responses:
         "200":
-          description: Login successful
+          description: Login successful (session cookie set)
           headers:
             Set-Cookie:
-              description: Session cookie
+              description: Session cookie (HttpOnly)
               schema:
                 type: string
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: false
-                required: [user]
-                properties:
-                  user:
-                    $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/AuthResponse"
         "400":
           description: Missing credentials
           content:
@@ -255,12 +315,17 @@ paths:
 
   /api/auth/logout:
     post:
-      summary: Log out
+      summary: Log out (invalidate current session)
       security:
         - sessionCookie: []
+          csrfToken: []
       responses:
         "200":
-          description: Logged out
+          description: Logged out (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
         "401":
           description: Not authenticated
           content:
@@ -273,6 +338,7 @@ paths:
       summary: Change password
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -289,8 +355,18 @@ paths:
       responses:
         "200":
           description: Password updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
-          description: Invalid credentials
+          description: Not authenticated or invalid current password
           content:
             application/json:
               schema:
@@ -307,12 +383,52 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: false
-                required: [user]
-                properties:
-                  user:
-                    $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      summary: Delete authenticated user and all sessions
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          description: User deleted (no content)
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/csrf:
+    get:
+      summary: Get CSRF token for current session
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: CSRF token returned for current authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsrfResponse"
         "401":
           description: Not authenticated
           content:
@@ -320,25 +436,78 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/auth/reset-password/request:
+    post:
+      summary: Request password reset (no account enumeration)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email:
+                  type: string
+      responses:
+        "200":
+          description: Always returns success (even if email does not exist)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "400":
+          description: Missing email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/reset-password/confirm:
+    post:
+      summary: Confirm password reset using one-time token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, newPassword]
+              properties:
+                token:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        "200":
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "400":
+          description: Invalid input or invalid/expired reset token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/sessions/current:
     get:
-      summary: Get current session
+      summary: Get current session context
       security:
         - sessionCookie: []
       responses:
         "200":
-          description: Session info
+          description: Current session info
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: false
-                required: [session, user]
-                properties:
-                  session:
-                    $ref: "#/components/schemas/Session"
-                  user:
-                    $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/CurrentSessionResponse"
         "401":
           description: Not authenticated
           content:
@@ -347,12 +516,35 @@ paths:
                 $ref: "#/components/schemas/Error"
 
     delete:
-      summary: Invalidate current session
+      summary: Invalidate current session (log out this device)
       security:
         - sessionCookie: []
       responses:
         "200":
           description: Session destroyed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/sessions:
+    delete:
+      summary: Invalidate all sessions for authenticated user (log out of all devices)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: All sessions destroyed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
         "401":
           description: Not authenticated
           content:
@@ -374,6 +566,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Hive"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
     post:
       summary: Create hive
@@ -406,6 +604,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/hives/{hiveId}:
     get:
@@ -426,6 +630,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Hive"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Hive not found
           content:
@@ -464,6 +674,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Hive"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Hive not found
           content:
@@ -485,6 +701,12 @@ paths:
       responses:
         "200":
           description: Hive deleted
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Hive not found
           content:
@@ -506,6 +728,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Device"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
     post:
       summary: Create device
@@ -530,6 +758,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Device"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Hive not found
           content:
@@ -556,6 +790,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Device"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Device not found
           content:
@@ -592,6 +832,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Device"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Device not found
           content:
@@ -613,6 +859,12 @@ paths:
       responses:
         "200":
           description: Device deleted
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Device not found
           content:
@@ -659,6 +911,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Reading"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/readings/latest:
     get:
@@ -683,6 +941,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Reading"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: No readings found
           content:
