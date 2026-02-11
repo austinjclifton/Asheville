@@ -23,9 +23,10 @@ info:
         - Header: `X-CSRF-Token: <token>`
     - Sessions are **per-device/per-browser**; multiple concurrent sessions are supported.
 
-    **2) External ingest API (`/ingest/*`) — Device key**
-    - Devices authenticate using an API key header:
-      - Header: `X-INGEST-KEY`
+    **2) External ingest API (`/api/ingest/*`) — Device key**
+    - Devices authenticate using headers:
+      - `X-Device-Id: <device id>`
+      - `X-Device-Key: <device secret>`
 
 servers:
   - url: http://localhost:4000
@@ -33,6 +34,22 @@ servers:
 
 security:
   - sessionCookie: []
+
+tags:
+  - name: Health
+    description: Service status
+  - name: Auth
+    description: Authentication and account management
+  - name: Sessions
+    description: Session inspection and invalidation
+  - name: Hives
+    description: Manage hives (owned by authenticated beekeeper)
+  - name: Devices
+    description: Manage devices (owned through hive → beekeeper)
+  - name: Readings
+    description: Read-only telemetry query endpoints
+  - name: Ingest
+    description: Device telemetry ingestion endpoints
 
 components:
   securitySchemes:
@@ -46,10 +63,136 @@ components:
       in: header
       name: X-CSRF-Token
 
-    ingestKey:
+    deviceIdHeader:
       type: apiKey
       in: header
-      name: X-INGEST-KEY
+      name: X-Device-Id
+
+    deviceKeyHeader:
+      type: apiKey
+      in: header
+      name: X-Device-Key
+
+  parameters:
+    HiveIdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: Hive id
+
+    DeviceIdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: Device id
+
+    ReadingDeviceIdQuery:
+      name: deviceId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+      description: Filter readings by a specific device id (owned by the authenticated user)
+
+    ReadingHiveIdQuery:
+      name: hiveId
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+      description: Filter readings by a specific hive id (owned by the authenticated user)
+
+    ReadingFromQuery:
+      name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Start of time range (inclusive)
+
+    ReadingToQuery:
+      name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: End of time range (inclusive)
+
+    ReadingLimitQuery:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+      description: Max rows to return (server clamps to a safe maximum)
+
+  responses:
+    UnauthorizedError:
+      description: Not authenticated (missing/invalid session cookie)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notAuthenticated:
+              value:
+                error: Authentication required
+
+    ForbiddenError:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            forbidden:
+              value:
+                error: Forbidden
+
+    NotFoundError:
+      description: Resource not found (or not owned by the authenticated user)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              value:
+                error: Not found
+
+    BadRequestError:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            badRequest:
+              value:
+                error: Invalid input
+
+    ConflictError:
+      description: Conflict (duplicate or violates constraint)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            conflict:
+              value:
+                error: Conflict
 
   schemas:
     Error:
@@ -165,7 +308,7 @@ components:
     Device:
       type: object
       additionalProperties: false
-      required: [id, hive_id, installed_at, last_seen_at, active]
+      required: [id, hive_id, installed_at, last_seen_at]
       properties:
         id:
           type: integer
@@ -181,8 +324,6 @@ components:
           type: string
           format: date-time
           nullable: true
-        active:
-          type: boolean
 
     Reading:
       type: object
@@ -191,7 +332,7 @@ components:
         - id
         - device_id
         - recorded_at
-        - temperature_c
+        - temperature_f
         - battery_voltage
         - signal_strength
         - created_at
@@ -205,7 +346,7 @@ components:
         recorded_at:
           type: string
           format: date-time
-        temperature_c:
+        temperature_f:
           type: number
         battery_voltage:
           type: number
@@ -217,17 +358,98 @@ components:
           type: string
           format: date-time
 
+    HiveListResponse:
+      type: object
+      additionalProperties: false
+      required: [hives]
+      properties:
+        hives:
+          type: array
+          items:
+            $ref: "#/components/schemas/Hive"
+
+    HiveResponse:
+      type: object
+      additionalProperties: false
+      required: [hive]
+      properties:
+        hive:
+          $ref: "#/components/schemas/Hive"
+
+    DeviceListResponse:
+      type: object
+      additionalProperties: false
+      required: [devices]
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+
+    DeviceResponse:
+      type: object
+      additionalProperties: false
+      required: [device]
+      properties:
+        device:
+          $ref: "#/components/schemas/Device"
+
+    ReadingListResponse:
+      type: object
+      additionalProperties: false
+      required: [readings]
+      properties:
+        readings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reading"
+
+    ReadingStats:
+      type: object
+      additionalProperties: false
+      required: [min, max, avg, count]
+      properties:
+        min:
+          type: number
+          nullable: true
+          description: Minimum temperature_f in the filtered range (null if no rows)
+        max:
+          type: number
+          nullable: true
+          description: Maximum temperature_f in the filtered range (null if no rows)
+        avg:
+          type: number
+          nullable: true
+          description: Average temperature_f in the filtered range (null if no rows)
+        count:
+          type: integer
+          description: Number of readings in the filtered range
+
+    ReadingStatsResponse:
+      type: object
+      additionalProperties: false
+      required: [stats]
+      properties:
+        stats:
+          $ref: "#/components/schemas/ReadingStats"
+
 paths:
   /health:
     get:
+      tags: [Health]
       summary: Health check
       security: []
       responses:
         "200":
           description: Server is running
 
+  # --------------------------------------------------------------------------
+  # Auth (PRESERVED)
+  # --------------------------------------------------------------------------
+
   /api/auth/register:
     post:
+      tags: [Auth]
       summary: Register new user
       security: []
       requestBody:
@@ -245,6 +467,12 @@ paths:
                   type: string
                 password:
                   type: string
+            examples:
+              register:
+                value:
+                  email: user@example.com
+                  username: beekeeper1
+                  password: "Password123!"
       responses:
         "201":
           description: User created and authenticated session established
@@ -258,20 +486,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
         "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequestError"
         "409":
           description: User already exists
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                exists:
+                  value:
+                    error: User already exists
 
   /api/auth/login:
     post:
+      tags: [Auth]
       summary: Log in
       security: []
       requestBody:
@@ -288,6 +517,11 @@ paths:
                   description: Username or email (whichever is supported by the server)
                 password:
                   type: string
+            examples:
+              login:
+                value:
+                  identifier: beekeeper1
+                  password: "Password123!"
       responses:
         "200":
           description: Login successful (session cookie set)
@@ -306,15 +540,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                missing:
+                  value:
+                    error: Missing credentials
         "401":
           description: Invalid credentials
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                invalid:
+                  value:
+                    error: Invalid credentials
 
   /api/auth/logout:
     post:
+      tags: [Auth]
       summary: Log out (invalidate current session)
       security:
         - sessionCookie: []
@@ -327,14 +570,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Success"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
 
   /api/auth/change-password:
     post:
+      tags: [Auth]
       summary: Change password
       security:
         - sessionCookie: []
@@ -352,6 +592,11 @@ paths:
                   type: string
                 newPassword:
                   type: string
+            examples:
+              changePassword:
+                value:
+                  currentPassword: "Password123!"
+                  newPassword: "NewPassword123!"
       responses:
         "200":
           description: Password updated
@@ -360,11 +605,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Success"
         "400":
-          description: Invalid request body
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequestError"
         "401":
           description: Not authenticated or invalid current password
           content:
@@ -374,6 +615,7 @@ paths:
 
   /api/auth/me:
     get:
+      tags: [Auth]
       summary: Get current user
       security:
         - sessionCookie: []
@@ -385,12 +627,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/MeResponse"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
     delete:
+      tags: [Auth]
       summary: Delete authenticated user and all sessions
       security:
         - sessionCookie: []
@@ -399,26 +638,15 @@ paths:
         "204":
           description: User deleted (no content)
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
         "403":
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/ForbiddenError"
         "404":
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFoundError"
 
   /api/auth/csrf:
     get:
+      tags: [Auth]
       summary: Get CSRF token for current session
       security:
         - sessionCookie: []
@@ -430,14 +658,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/CsrfResponse"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
 
   /api/auth/reset-password/request:
     post:
+      tags: [Auth]
       summary: Request password reset (no account enumeration)
       security: []
       requestBody:
@@ -451,6 +676,10 @@ paths:
               properties:
                 email:
                   type: string
+            examples:
+              request:
+                value:
+                  email: user@example.com
       responses:
         "200":
           description: Always returns success (even if email does not exist)
@@ -467,6 +696,7 @@ paths:
 
   /api/auth/reset-password/confirm:
     post:
+      tags: [Auth]
       summary: Confirm password reset using one-time token
       security: []
       requestBody:
@@ -482,6 +712,11 @@ paths:
                   type: string
                 newPassword:
                   type: string
+            examples:
+              confirm:
+                value:
+                  token: "raw-reset-token"
+                  newPassword: "NewPassword123!"
       responses:
         "200":
           description: Password reset successful
@@ -496,8 +731,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  # --------------------------------------------------------------------------
+  # Sessions (PRESERVED)
+  # --------------------------------------------------------------------------
+
   /api/sessions/current:
     get:
+      tags: [Sessions]
       summary: Get current session context
       security:
         - sessionCookie: []
@@ -509,13 +749,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/CurrentSessionResponse"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
+          $ref: "#/components/responses/UnauthorizedError"
     delete:
+      tags: [Sessions]
       summary: Invalidate current session (log out this device)
       security:
         - sessionCookie: []
@@ -527,14 +763,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Success"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
 
   /api/sessions:
     delete:
+      tags: [Sessions]
       summary: Invalidate all sessions for authenticated user (log out of all devices)
       security:
         - sessionCookie: []
@@ -546,34 +779,40 @@ paths:
               schema:
                 $ref: "#/components/schemas/Success"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
+
+  # --------------------------------------------------------------------------
+  # Hives (UPDATED to match our routes/controllers)
+  # --------------------------------------------------------------------------
 
   /api/hives:
     get:
+      tags: [Hives]
       summary: List hives
       security:
         - sessionCookie: []
       responses:
         "200":
-          description: Hive list
+          description: Hive list (owned by the authenticated beekeeper)
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Hive"
+                $ref: "#/components/schemas/HiveListResponse"
+              examples:
+                example:
+                  value:
+                    hives:
+                      - id: 1
+                        beekeeper_id: 10
+                        name: "Backyard Hive"
+                        notes: "Strong colony"
+                        created_at: "2026-02-10T10:00:00Z"
+                        updated_at: "2026-02-10T10:00:00Z"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
 
     post:
+      tags: [Hives]
       summary: Create hive
       security:
         - sessionCookie: []
@@ -588,54 +827,46 @@ paths:
               properties:
                 name:
                   type: string
+                  maxLength: 100
                 notes:
                   type: string
                   nullable: true
+            examples:
+              create:
+                value:
+                  name: "Backyard Hive"
+                  notes: "Installed near the oak tree"
       responses:
         "201":
           description: Hive created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Hive"
+                $ref: "#/components/schemas/HiveResponse"
         "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
 
-  /api/hives/{hiveId}:
+  /api/hives/{id}:
+    parameters:
+      - $ref: "#/components/parameters/HiveIdPath"
     get:
+      tags: [Hives]
       summary: Get hive
       security:
         - sessionCookie: []
-      parameters:
-        - name: hiveId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
       responses:
         "200":
           description: Hive
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Hive"
+                $ref: "#/components/schemas/HiveResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
         "404":
           description: Hive not found
           content:
@@ -643,17 +874,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-    put:
-      summary: Update hive
+    patch:
+      tags: [Hives]
+      summary: Update hive (partial)
       security:
         - sessionCookie: []
-      parameters:
-        - name: hiveId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
       requestBody:
         required: true
         content:
@@ -664,22 +889,28 @@ paths:
               properties:
                 name:
                   type: string
+                  maxLength: 100
                 notes:
                   type: string
                   nullable: true
+            examples:
+              rename:
+                value:
+                  name: "Backyard Hive - North"
+              clearNotes:
+                value:
+                  notes: null
       responses:
         "200":
           description: Hive updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Hive"
+                $ref: "#/components/schemas/HiveResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
         "404":
           description: Hive not found
           content:
@@ -688,25 +919,17 @@ paths:
                 $ref: "#/components/schemas/Error"
 
     delete:
+      tags: [Hives]
       summary: Delete hive
       security:
         - sessionCookie: []
-      parameters:
-        - name: hiveId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
       responses:
-        "200":
-          description: Hive deleted
+        "204":
+          description: Hive deleted (no content). Cascades to devices/readings via FK.
+        "400":
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
         "404":
           description: Hive not found
           content:
@@ -714,28 +937,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  # --------------------------------------------------------------------------
+  # Devices (UPDATED to match our routes/controllers)
+  # --------------------------------------------------------------------------
+
   /api/devices:
     get:
+      tags: [Devices]
       summary: List devices
       security:
         - sessionCookie: []
       responses:
         "200":
-          description: Device list
+          description: Device list (owned via hive → beekeeper)
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Device"
+                $ref: "#/components/schemas/DeviceListResponse"
+              examples:
+                example:
+                  value:
+                    devices:
+                      - id: 12
+                        hive_id: 1
+                        installed_at: "2026-02-10T12:00:00Z"
+                        last_seen_at: null
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
 
     post:
+      tags: [Devices]
       summary: Create device
       security:
         - sessionCookie: []
@@ -751,51 +982,52 @@ paths:
                 hiveId:
                   type: integer
                   format: int64
+                installedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+            examples:
+              create:
+                value:
+                  hiveId: 1
+                  installedAt: "2026-02-10T12:00:00Z"
       responses:
         "201":
           description: Device created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Device"
+                $ref: "#/components/schemas/DeviceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
         "404":
-          description: Hive not found
+          description: Hive not found (or not owned by user)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /api/devices/{deviceId}:
+  /api/devices/{id}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceIdPath"
     get:
+      tags: [Devices]
       summary: Get device
       security:
         - sessionCookie: []
-      parameters:
-        - name: deviceId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
       responses:
         "200":
           description: Device
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Device"
+                $ref: "#/components/schemas/DeviceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
         "404":
           description: Device not found
           content:
@@ -803,17 +1035,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-    put:
-      summary: Update device
+    patch:
+      tags: [Devices]
+      summary: Update device (partial)
       security:
         - sessionCookie: []
-      parameters:
-        - name: deviceId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
       requestBody:
         required: true
         content:
@@ -821,23 +1047,36 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [active]
               properties:
-                active:
-                  type: boolean
+                installedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                lastSeenAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+            examples:
+              setInstalled:
+                value:
+                  installedAt: "2026-02-10T12:00:00Z"
+              setLastSeen:
+                value:
+                  lastSeenAt: "2026-02-11T09:10:00Z"
+              clearInstalled:
+                value:
+                  installedAt: null
       responses:
         "200":
           description: Device updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Device"
+                $ref: "#/components/schemas/DeviceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
         "404":
           description: Device not found
           content:
@@ -846,25 +1085,17 @@ paths:
                 $ref: "#/components/schemas/Error"
 
     delete:
+      tags: [Devices]
       summary: Delete device
       security:
         - sessionCookie: []
-      parameters:
-        - name: deviceId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
       responses:
-        "200":
-          description: Device deleted
+        "204":
+          description: Device deleted (no content). Cascades to readings via FK.
+        "400":
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
         "404":
           description: Device not found
           content:
@@ -872,93 +1103,158 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  # --------------------------------------------------------------------------
+  # Readings (UPDATED to match our routes/controllers)
+  # --------------------------------------------------------------------------
+
   /api/readings:
     get:
+      tags: [Readings]
       summary: Query readings
+      description: |
+        Returns readings scoped to the authenticated beekeeper.
+        Filters:
+        - Provide at most one of deviceId or hiveId.
+        - Optional time range with from/to.
+        - Optional limit (clamped server-side).
       security:
         - sessionCookie: []
       parameters:
-        - name: deviceId
-          in: query
-          schema:
-            type: integer
-            format: int64
-        - name: hiveId
-          in: query
-          schema:
-            type: integer
-            format: int64
-        - name: from
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: to
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: limit
-          in: query
-          schema:
-            type: integer
+        - $ref: "#/components/parameters/ReadingDeviceIdQuery"
+        - $ref: "#/components/parameters/ReadingHiveIdQuery"
+        - $ref: "#/components/parameters/ReadingFromQuery"
+        - $ref: "#/components/parameters/ReadingToQuery"
+        - $ref: "#/components/parameters/ReadingLimitQuery"
       responses:
         "200":
           description: Readings
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Reading"
-        "401":
-          description: Not authenticated
+                $ref: "#/components/schemas/ReadingListResponse"
+              examples:
+                example:
+                  value:
+                    readings:
+                      - id: 100
+                        device_id: 12
+                        recorded_at: "2026-02-11T09:00:00Z"
+                        temperature_f: 91.2
+                        battery_voltage: 3.71
+                        signal_strength: -87
+                        created_at: "2026-02-11T09:00:01Z"
+        "400":
+          description: Invalid filters (e.g., both deviceId and hiveId)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
 
   /api/readings/latest:
     get:
-      summary: Get latest reading
+      tags: [Readings]
+      summary: Get latest readings
+      description: |
+        Returns the latest reading per device for the authenticated beekeeper.
+        Optional filters:
+        - deviceId: returns latest reading for that device only.
+        - hiveId: returns latest reading per device within the hive.
       security:
         - sessionCookie: []
       parameters:
-        - name: deviceId
-          in: query
-          schema:
-            type: integer
-            format: int64
-        - name: hiveId
-          in: query
-          schema:
-            type: integer
-            format: int64
+        - $ref: "#/components/parameters/ReadingDeviceIdQuery"
+        - $ref: "#/components/parameters/ReadingHiveIdQuery"
       responses:
         "200":
-          description: Latest reading
+          description: Latest readings
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Reading"
+                $ref: "#/components/schemas/ReadingListResponse"
+              examples:
+                example:
+                  value:
+                    readings:
+                      - id: 101
+                        device_id: 12
+                        recorded_at: "2026-02-11T09:10:00Z"
+                        temperature_f: 91.4
+                        battery_voltage: 3.70
+                        signal_strength: -86
+                        created_at: "2026-02-11T09:10:01Z"
+        "400":
+          description: Invalid filters (e.g., both deviceId and hiveId)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: No readings found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/UnauthorizedError"
 
-  /ingest/reading:
-    post:
-      summary: Ingest telemetry (external)
+  /api/readings/stats:
+    get:
+      tags: [Readings]
+      summary: Get reading statistics
+      description: |
+        Returns aggregate statistics over the filtered reading set.
+        Filters:
+        - Provide at most one of deviceId or hiveId.
+        - Optional time range with from/to.
       security:
-        - ingestKey: []
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/ReadingDeviceIdQuery"
+        - $ref: "#/components/parameters/ReadingHiveIdQuery"
+        - $ref: "#/components/parameters/ReadingFromQuery"
+        - $ref: "#/components/parameters/ReadingToQuery"
+      responses:
+        "200":
+          description: Statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadingStatsResponse"
+              examples:
+                example:
+                  value:
+                    stats:
+                      min: 88.1
+                      max: 94.6
+                      avg: 91.3
+                      count: 144
+        "400":
+          description: Invalid filters (e.g., both deviceId and hiveId)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  # --------------------------------------------------------------------------
+  # Ingest (UPDATED + tied to device via headers)
+  # --------------------------------------------------------------------------
+
+  /api/ingest/readings:
+    post:
+      tags: [Ingest]
+      summary: Ingest telemetry from device
+      description: |
+        Device telemetry ingest endpoint.
+
+        Authentication:
+        - `X-Device-Id`: device numeric id
+        - `X-Device-Key`: device secret (server verifies hash)
+
+        Behavior:
+        - Inserts a new reading (append-only)
+        - Enforces (device_id, recorded_at) uniqueness at DB level
+        - Updates device.last_seen_at on successful ingest (server behavior)
+      security:
+        - deviceIdHeader: []
+          deviceKeyHeader: []
       requestBody:
         required: true
         content:
@@ -966,15 +1262,12 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [deviceId, recordedAt, temperatureC]
+              required: [recordedAt, temperatureF]
               properties:
-                deviceId:
-                  type: integer
-                  format: int64
                 recordedAt:
                   type: string
                   format: date-time
-                temperatureC:
+                temperatureF:
                   type: number
                 batteryVoltage:
                   type: number
@@ -982,33 +1275,38 @@ paths:
                 signalStrength:
                   type: number
                   nullable: true
+            examples:
+              ingest:
+                value:
+                  recordedAt: "2026-02-11T09:10:00Z"
+                  temperatureF: 91.4
+                  batteryVoltage: 3.70
+                  signalStrength: -86
       responses:
         "201":
           description: Reading ingested
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Reading"
+                $ref: "#/components/schemas/Success"
+              examples:
+                ok:
+                  value:
+                    success: true
         "400":
-          description: Invalid payload
+          description: Invalid payload (missing fields, invalid timestamp, out-of-range values)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: Device not found or inactive
+          description: Unauthorized device (missing/invalid device credentials)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: Duplicate reading
+          description: Duplicate reading (same deviceId + recordedAt) if server chooses to expose conflicts
           content:
             application/json:
               schema:
