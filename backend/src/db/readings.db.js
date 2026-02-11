@@ -1,106 +1,190 @@
+"use strict";
+
 /**
  * Readings Repository
- * Table: reading
+ *
+ * Responsibilities:
+ * - Pure SQL
+ * - No business rules
+ * - Enforce ownership via joins
+ * - Parameterized queries only
  */
-
-"use strict";
 
 const { query } = require("./pool");
 
-/* ================================================================
- * Core ingestion & retrieval
- * ================================================================ */
+/* -------------------------------------------------------------------------- */
+/* Core Retrieval                                                              */
+/* -------------------------------------------------------------------------- */
 
 /**
- * create
+ * findReadings
  *
- * Used by:
- * - ingestion endpoint
- *
- * Idempotent at DB level via (device_id, recorded_at) UNIQUE key
+ * Flexible historical query scoped by beekeeper.
  */
-exports.create = async ({
+exports.findReadings = async ({
+  beekeeperId,
   deviceId,
-  recordedAt,
-  temperatureC,
-  batteryVoltage,
-  signalStrength,
+  hiveId,
+  from,
+  to,
+  limit,
 }) => {
-  const sql = `
-    INSERT INTO reading (
-      device_id,
-      recorded_at,
-      temperature_c,
-      battery_voltage,
-      signal_strength
-    )
-    VALUES (?, ?, ?, ?, ?)
+  const values = [beekeeperId];
+  let idx = values.length;
+
+  let sql = `
+    SELECT r.*
+    FROM reading r
+    JOIN device d ON r.device_id = d.id
+    JOIN hive h ON d.hive_id = h.id
+    WHERE h.beekeeper_id = $1
   `;
 
-  await query(sql, [
-    deviceId,
-    recordedAt,
-    temperatureC,
-    batteryVoltage ?? null,
-    signalStrength ?? null,
-  ]);
-};
+  if (deviceId) {
+    values.push(deviceId);
+    idx++;
+    sql += ` AND r.device_id = $${idx}`;
+  }
 
-/**
- * findLatestByDevice
- *
- * Used for:
- * - current temperature display
- */
-exports.findLatestByDevice = async (deviceId) => {
-  const sql = `
-    SELECT *
-    FROM reading
-    WHERE device_id = ?
-    ORDER BY recorded_at DESC
-    LIMIT 1
+  if (hiveId) {
+    values.push(hiveId);
+    idx++;
+    sql += ` AND d.hive_id = $${idx}`;
+  }
+
+  if (from) {
+    values.push(from);
+    idx++;
+    sql += ` AND r.recorded_at >= $${idx}`;
+  }
+
+  if (to) {
+    values.push(to);
+    idx++;
+    sql += ` AND r.recorded_at <= $${idx}`;
+  }
+
+  values.push(limit);
+  idx++;
+  sql += `
+    ORDER BY r.recorded_at DESC
+    LIMIT $${idx}
   `;
 
-  const [rows] = await query(sql, [deviceId]);
-  return rows[0] ?? null;
+  const rows = await query(sql, values);
+  return rows;
 };
 
-/* ================================================================
- * Historical queries (STUBS)
- * ================================================================ */
+/* -------------------------------------------------------------------------- */
+/* Latest Readings                                                             */
+/* -------------------------------------------------------------------------- */
 
 /**
- * findByDeviceInRange
+ * findLatestReadings
  *
- * Intended for:
- * - charts
- * - analytics
+ * If deviceId provided → latest for that device.
+ * Otherwise → latest per device owned by beekeeper.
  */
-exports.findByDeviceInRange = async (
-  _deviceId,
-  _start,
-  _end
-) => {
-  throw new Error("findByDeviceInRange not implemented");
+exports.findLatestReadings = async ({
+  beekeeperId,
+  deviceId,
+  hiveId,
+}) => {
+  const values = [beekeeperId];
+  let idx = values.length;
+
+  let baseJoin = `
+    FROM reading r
+    JOIN device d ON r.device_id = d.id
+    JOIN hive h ON d.hive_id = h.id
+    WHERE h.beekeeper_id = $1
+  `;
+
+  if (deviceId) {
+    values.push(deviceId);
+    idx++;
+    const sql = `
+      SELECT r.*
+      ${baseJoin}
+      AND r.device_id = $${idx}
+      ORDER BY r.recorded_at DESC
+      LIMIT 1
+    `;
+    const rows = await query(sql, values);
+    return rows;
+  }
+
+  if (hiveId) {
+    values.push(hiveId);
+    idx++;
+    baseJoin += ` AND d.hive_id = $${idx}`;
+  }
+
+  const sql = `
+    SELECT DISTINCT ON (r.device_id) r.*
+    ${baseJoin}
+    ORDER BY r.device_id, r.recorded_at DESC
+  `;
+
+  const rows = await query(sql, values);
+  return rows;
 };
 
-/**
- * deleteByDevice
- *
- * Intended for:
- * - cleanup on device removal
- */
-exports.deleteByDevice = async (_deviceId) => {
-  throw new Error("deleteByDevice not implemented");
-};
+/* -------------------------------------------------------------------------- */
+/* Aggregates                                                                  */
+/* -------------------------------------------------------------------------- */
 
 /**
- * aggregateDaily
+ * findReadingStats
  *
- * Intended for:
- * - rollups
- * - reporting
+ * Returns min/max/avg/count.
  */
-exports.aggregateDaily = async (_deviceId, _date) => {
-  throw new Error("aggregateDaily not implemented");
+exports.findReadingStats = async ({
+  beekeeperId,
+  deviceId,
+  hiveId,
+  from,
+  to,
+}) => {
+  const values = [beekeeperId];
+  let idx = values.length;
+
+  let sql = `
+    SELECT
+      MIN(r.temperature_f) AS min,
+      MAX(r.temperature_f) AS max,
+      AVG(r.temperature_f) AS avg,
+      COUNT(*) AS count
+    FROM reading r
+    JOIN device d ON r.device_id = d.id
+    JOIN hive h ON d.hive_id = h.id
+    WHERE h.beekeeper_id = $1
+  `;
+
+  if (deviceId) {
+    values.push(deviceId);
+    idx++;
+    sql += ` AND r.device_id = $${idx}`;
+  }
+
+  if (hiveId) {
+    values.push(hiveId);
+    idx++;
+    sql += ` AND d.hive_id = $${idx}`;
+  }
+
+  if (from) {
+    values.push(from);
+    idx++;
+    sql += ` AND r.recorded_at >= $${idx}`;
+  }
+
+  if (to) {
+    values.push(to);
+    idx++;
+    sql += ` AND r.recorded_at <= $${idx}`;
+  }
+
+  const rows = await query(sql, values);
+  return rows[0];
 };

@@ -4,8 +4,14 @@
  * Reading Routes
  *
  * Responsibilities:
- * - Define HTTP routes and apply middleware (wiring only)
- * - Delegate request handling to controllers
+ * - Define authenticated reading retrieval endpoints
+ * - Apply requireAuth middleware
+ * - Delegate all logic to controller
+ *
+ * Design Principles:
+ * - Read-only (telemetry is immutable)
+ * - Filter-based querying
+ * - No mutation routes
  */
 
 const express = require("express");
@@ -14,36 +20,45 @@ const readingController = require("../controllers/readings.controller.js");
 
 const router = express.Router();
 
+/* -------------------------------------------------------------------------- */
+/* Authenticated Reading Retrieval                                             */
+/* -------------------------------------------------------------------------- */
+
 /**
- * List readings
  * GET /api/readings
+ *
+ * Flexible reading query endpoint.
+ *
+ * Query params:
+ * - deviceId (optional)
+ * - hiveId (optional)
+ * - from (ISO timestamp, optional)
+ * - to (ISO timestamp, optional)
+ * - limit (optional, default enforced in service)
+ *
+ * Returns readings scoped to authenticated beekeeper.
  */
 router.get("/", requireAuth, readingController.list);
 
 /**
- * Latest reading
  * GET /api/readings/latest
+ *
+ * Returns latest reading per device
+ * scoped to authenticated beekeeper.
  */
 router.get("/latest", requireAuth, readingController.latest);
 
 /**
- * Device readings
- * GET /api/devices/:deviceId/readings
+ * GET /api/readings/stats
+ *
+ * Returns aggregate statistics:
+ * - min
+ * - max
+ * - avg
+ * - count
+ *
+ * Filterable by deviceId, hiveId, from, to.
  */
-router.get(
-  "/devices/:deviceId/readings",
-  requireAuth,
-  readingController.listForDevice,
-);
-
-/**
- * Hive readings
- * GET /api/hives/:hiveId/readings
- */
-router.get(
-  "/hives/:hiveId/readings",
-  requireAuth,
-  readingController.listForHive,
-);
+router.get("/stats", requireAuth, readingController.stats);
 
 module.exports = router;

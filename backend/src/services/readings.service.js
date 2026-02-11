@@ -1,34 +1,42 @@
 "use strict";
 
 /**
- * Reading Service (MVP)
+ * Readings Service
  *
  * Responsibilities:
- * - Own reading-related business logic
- * - Enforce ownership through device → hive → beekeeper
+ * - Enforce beekeeper ownership
+ * - Apply domain rules
+ * - Coordinate repository queries
  * - Stay HTTP-agnostic
  *
- * This file intentionally:
- * - Contains ONLY exported service functions
- * - Uses minimal inline validation
- * - Avoids premature abstractions
- *
- * DB/repository logic will be injected later.
+ * This layer does NOT:
+ * - Know Express
+ * - Know req/res
+ * - Return HTTP responses
  */
 
-/* -------------------------------------------------------------------------- */
-/* Configuration                                                               */
-/* -------------------------------------------------------------------------- */
+const readingRepo = require("../db/readings.db.js");
 
 const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 1000;
 
 /* -------------------------------------------------------------------------- */
-/* Utilities (MVP-only, minimal)                                               */
+/* Utilities                                                                   */
 /* -------------------------------------------------------------------------- */
 
-/**
- * No shared helpers required for MVP.
- */
+function requireBeekeeper(beekeeperId) {
+  if (!Number.isInteger(beekeeperId) || beekeeperId <= 0) {
+    const err = new Error("Invalid beekeeperId");
+    err.status = 400;
+    throw err;
+  }
+}
+
+function normalizeLimit(limit) {
+  if (!limit) return DEFAULT_LIMIT;
+  if (limit > MAX_LIMIT) return MAX_LIMIT;
+  return limit;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Public API                                                                  */
@@ -38,7 +46,6 @@ const DEFAULT_LIMIT = 100;
  * getReadingsForUser
  *
  * Returns readings scoped to a beekeeper.
- * Can be filtered by device or hive.
  */
 exports.getReadingsForUser = async ({
   beekeeperId,
@@ -48,48 +55,83 @@ exports.getReadingsForUser = async ({
   to,
   limit,
 }) => {
-  if (!beekeeperId) {
-    throw new Error("beekeeperId is required");
-  }
+  requireBeekeeper(beekeeperId);
 
   if (deviceId && hiveId) {
-    throw new Error("Specify either deviceId or hiveId, not both");
+    const err = new Error("Specify either deviceId or hiveId, not both");
+    err.status = 400;
+    throw err;
   }
 
-  // TODO (DB layer):
-  // - verify ownership via joins
-  // - apply filters (deviceId, hiveId)
-  // - apply time range (from/to)
-  // - apply limit
+  const finalLimit = normalizeLimit(limit);
 
-  return [];
+  const readings = await readingRepo.findReadings({
+    beekeeperId,
+    deviceId,
+    hiveId,
+    from,
+    to,
+    limit: finalLimit,
+  });
+
+  return readings;
 };
 
 /**
- * getLatestReadingForUser
+ * getLatestReadingsForUser
  *
- * Returns the most recent reading for a device or hive.
+ * Returns latest reading per device
+ * or for a specific device/hive.
  */
-exports.getLatestReadingForUser = async ({
+exports.getLatestReadingsForUser = async ({
   beekeeperId,
   deviceId,
   hiveId,
 }) => {
-  if (!beekeeperId) {
-    throw new Error("beekeeperId is required");
-  }
-
-  if (!deviceId && !hiveId) {
-    throw new Error("deviceId or hiveId is required");
-  }
+  requireBeekeeper(beekeeperId);
 
   if (deviceId && hiveId) {
-    throw new Error("Specify either deviceId or hiveId, not both");
+    const err = new Error("Specify either deviceId or hiveId, not both");
+    err.status = 400;
+    throw err;
   }
 
-  // TODO (DB layer):
-  // - verify ownership
-  // - fetch most recent reading ordered by timestamp DESC
+  const readings = await readingRepo.findLatestReadings({
+    beekeeperId,
+    deviceId,
+    hiveId,
+  });
 
-  return null;
+  return readings;
+};
+
+/**
+ * getReadingStatsForUser
+ *
+ * Returns aggregate statistics.
+ */
+exports.getReadingStatsForUser = async ({
+  beekeeperId,
+  deviceId,
+  hiveId,
+  from,
+  to,
+}) => {
+  requireBeekeeper(beekeeperId);
+
+  if (deviceId && hiveId) {
+    const err = new Error("Specify either deviceId or hiveId, not both");
+    err.status = 400;
+    throw err;
+  }
+
+  const stats = await readingRepo.findReadingStats({
+    beekeeperId,
+    deviceId,
+    hiveId,
+    from,
+    to,
+  });
+
+  return stats;
 };

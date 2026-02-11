@@ -3,45 +3,49 @@
 /**
  * Hive Routes
  *
- * Responsibilities:
- * - Define HTTP routes and apply middleware (wiring only)
- * - Delegate request handling to controllers
+ * This module is wiring only:
+ * - declares HTTP routes
+ * - applies middleware
+ * - delegates to controllers
+ *
+ * It must NOT contain business logic or SQL.
  */
 
 const express = require("express");
 const { requireAuth } = require("../middleware/requireAuth.js");
-const hiveController = require("../controllers/hives.controller.js");
+const hivesController = require("../controllers/hives.controller.js");
 
 const router = express.Router();
 
 /**
- * List hives
- * GET /api/hives
- */
-router.get("/", requireAuth, hiveController.list);
-
-/**
- * Create hive
  * POST /api/hives
+ * Create a hive owned by the authenticated beekeeper.
  */
-router.post("/", requireAuth, hiveController.create);
+router.post("/", requireAuth, hivesController.create);
 
 /**
- * Get hive
- * GET /api/hives/:hiveId
+ * GET /api/hives
+ * List all hives owned by the authenticated beekeeper.
  */
-router.get("/:hiveId", requireAuth, hiveController.get);
+router.get("/", requireAuth, hivesController.list);
 
 /**
- * Update hive
- * PUT /api/hives/:hiveId
+ * GET /api/hives/:id
+ * Fetch a single hive by id (must be owned by the authenticated beekeeper).
  */
-router.put("/:hiveId", requireAuth, hiveController.update);
+router.get("/:id", requireAuth, hivesController.getById);
 
 /**
- * Delete hive
- * DELETE /api/hives/:hiveId
+ * PATCH /api/hives/:id
+ * Partially update a hive (owned by authenticated beekeeper).
  */
-router.delete("/:hiveId", requireAuth, hiveController.remove);
+router.patch("/:id", requireAuth, hivesController.update);
+
+/**
+ * DELETE /api/hives/:id
+ * Delete a hive (owned by authenticated beekeeper).
+ * Cascades to devices/readings via FK constraints.
+ */
+router.delete("/:id", requireAuth, hivesController.remove);
 
 module.exports = router;

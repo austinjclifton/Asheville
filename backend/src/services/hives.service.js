@@ -1,109 +1,108 @@
 "use strict";
 
 /**
- * Hive Service (MVP)
+ * Hives Service
  *
- * Responsibilities:
- * - Own hive-related business rules
- * - Enforce beekeeper ownership
- * - Stay HTTP-agnostic
+ * Domain responsibilities:
+ * - enforce invariants (e.g., name length, types)
+ * - coordinate repository calls
+ * - remain HTTP-agnostic
  *
- * This file intentionally:
- * - Contains ONLY exported service functions
- * - Does NOT contain SQL
- * - Does NOT know about Express
- *
- * DB/repository logic will be injected later.
+ * Ownership is enforced by passing beekeeperId to repo queries.
  */
 
+const hiveRepo = require("../db/hives.db.js");
+
+function assertPositiveInt(value, field) {
+  if (!Number.isInteger(value) || value <= 0) {
+    const err = new Error(`${field} must be a positive integer`);
+    err.status = 400;
+    throw err;
+  }
+}
+
+function assertName(name) {
+  if (typeof name !== "string" || name.trim().length === 0) {
+    const err = new Error("name is required");
+    err.status = 400;
+    throw err;
+  }
+  if (name.length > 100) {
+    const err = new Error("name cannot exceed 100 characters");
+    err.status = 400;
+    throw err;
+  }
+}
+
 /* -------------------------------------------------------------------------- */
-/* Public API                                                                  */
+/* Create                                                                       */
 /* -------------------------------------------------------------------------- */
 
-/**
- * createHive
- *
- * Creates a new hive for a beekeeper.
- */
 exports.createHive = async ({ beekeeperId, name, notes }) => {
-  if (!beekeeperId) {
-    throw new Error("beekeeperId is required");
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  assertName(name);
+
+  if (!(notes === null || typeof notes === "string")) {
+    const err = new Error("notes must be a string or null");
+    err.status = 400;
+    throw err;
   }
 
-  if (!name) {
-    throw new Error("Hive name is required");
-  }
-
-  const hive = {
-    id: null, // placeholder
+  return hiveRepo.create({
     beekeeperId,
     name,
-    notes: notes ?? null,
-    createdAt: new Date(),
-  };
-
-  // TODO (DB layer):
-  // - insert hive
-  // - enforce beekeeper ownership
-
-  return hive;
+    notes,
+  });
 };
 
-/**
- * getHivesForUser
- *
- * Returns all hives owned by a beekeeper.
- */
-exports.getHivesForUser = async ({ beekeeperId }) => {
-  if (!beekeeperId) {
-    throw new Error("beekeeperId is required");
-  }
+/* -------------------------------------------------------------------------- */
+/* Read                                                                          */
+/* -------------------------------------------------------------------------- */
 
-  // TODO (DB layer):
-  // - fetch hives by beekeeperId
-
-  return [];
+exports.listHives = async ({ beekeeperId }) => {
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  return hiveRepo.findByBeekeeper(beekeeperId);
 };
 
-/**
- * getHiveForUser
- *
- * Returns a single hive if owned by the beekeeper.
- */
-exports.getHiveForUser = async ({ beekeeperId, hiveId }) => {
-  if (!beekeeperId) {
-    throw new Error("beekeeperId is required");
-  }
-
-  if (!hiveId) {
-    throw new Error("hiveId is required");
-  }
-
-  // TODO (DB layer):
-  // - fetch hive
-  // - verify ownership
-
-  return null;
+exports.getHive = async ({ beekeeperId, hiveId }) => {
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  assertPositiveInt(hiveId, "hiveId");
+  return hiveRepo.findById({ beekeeperId, hiveId });
 };
 
-/**
- * deleteHiveForUser
- *
- * Deletes a hive owned by the beekeeper.
- * Devices and readings cascade at the DB layer.
- */
-exports.deleteHiveForUser = async ({ beekeeperId, hiveId }) => {
-  if (!beekeeperId) {
-    throw new Error("beekeeperId is required");
+/* -------------------------------------------------------------------------- */
+/* Update                                                                        */
+/* -------------------------------------------------------------------------- */
+
+exports.updateHive = async ({ beekeeperId, hiveId, name, notes }) => {
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  assertPositiveInt(hiveId, "hiveId");
+
+  if (name !== undefined) {
+    assertName(name);
   }
 
-  if (!hiveId) {
-    throw new Error("hiveId is required");
+  if (notes !== undefined && !(notes === null || typeof notes === "string")) {
+    const err = new Error("notes must be a string or null");
+    err.status = 400;
+    throw err;
   }
 
-  // TODO (DB layer):
-  // - verify ownership
-  // - delete hive
+  // Repo returns null if not found / not owned.
+  return hiveRepo.update({
+    beekeeperId,
+    hiveId,
+    name,
+    notes,
+  });
+};
 
-  return true;
+/* -------------------------------------------------------------------------- */
+/* Delete                                                                        */
+/* -------------------------------------------------------------------------- */
+
+exports.deleteHive = async ({ beekeeperId, hiveId }) => {
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  assertPositiveInt(hiveId, "hiveId");
+  return hiveRepo.remove({ beekeeperId, hiveId });
 };

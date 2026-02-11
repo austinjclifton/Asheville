@@ -1,134 +1,76 @@
 "use strict";
 
 /**
- * Device Service (MVP)
+ * Devices Service
  *
  * Responsibilities:
- * - Own device-related business logic
- * - Enforce ownership via hive → beekeeper relationship
- * - Stay HTTP-agnostic
- *
- * This file intentionally:
- * - Contains ONLY exported service functions
- * - Uses minimal inline validation
- * - Avoids premature abstractions
- *
- * DB/repository logic will be injected later.
+ * - Enforce domain invariants
+ * - Coordinate repo
+ * - Remain HTTP-agnostic
  */
 
-/* -------------------------------------------------------------------------- */
-/* Configuration                                                               */
-/* -------------------------------------------------------------------------- */
+const deviceRepo = require("../db/devices.db.js");
 
-/**
- * No configuration needed for MVP device logic.
- */
-
-/* -------------------------------------------------------------------------- */
-/* Utilities (MVP-only, minimal)                                               */
-/* -------------------------------------------------------------------------- */
-
-/**
- * No shared helpers required for MVP.
- */
-
-/* -------------------------------------------------------------------------- */
-/* Public API                                                                  */
-/* -------------------------------------------------------------------------- */
-
-/**
- * getDevicesForUser
- *
- * Returns all devices belonging to hives owned by the beekeeper.
- */
-exports.getDevicesForUser = async ({ beekeeperId }) => {
-  if (!beekeeperId) {
-    throw new Error("beekeeperId is required");
+function assertPositiveInt(value, field) {
+  if (!Number.isInteger(value) || value <= 0) {
+    const err = new Error(`${field} must be a positive integer`);
+    err.status = 400;
+    throw err;
   }
+}
 
-  // TODO (DB layer):
-  // - fetch devices joined through hives owned by beekeeperId
+/* -------------------------------------------------------------------------- */
 
-  return [];
-};
+exports.createDevice = async ({ beekeeperId, hiveId, installedAt }) => {
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  assertPositiveInt(hiveId, "hiveId");
 
-/**
- * createDevice
- *
- * Creates a new device attached to a hive.
- */
-exports.createDevice = async ({ hiveId, beekeeperId }) => {
-  if (!hiveId || !beekeeperId) {
-    throw new Error("hiveId and beekeeperId are required");
-  }
-
-  // TODO (DB layer):
-  // - verify hive exists and is owned by beekeeperId
-  // - insert device
-  // - set installed_at
-  // - return created device
-
-  return {
-    id: null,
+  return deviceRepo.create({
+    beekeeperId,
     hiveId,
-    active: true,
-    installedAt: new Date(),
-  };
+    installedAt,
+  });
 };
 
-/**
- * getDeviceById
- *
- * Returns a device if it belongs to the beekeeper.
- */
-exports.getDeviceById = async ({ deviceId, beekeeperId }) => {
-  if (!deviceId || !beekeeperId) {
-    throw new Error("deviceId and beekeeperId are required");
-  }
+/* -------------------------------------------------------------------------- */
 
-  // TODO (DB layer):
-  // - fetch device by id
-  // - verify ownership via hive
-
-  return null;
+exports.listDevices = async ({ beekeeperId }) => {
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  return deviceRepo.findByBeekeeper(beekeeperId);
 };
 
-/**
- * updateDevice
- *
- * Updates mutable device fields.
- */
-exports.updateDevice = async ({ deviceId, beekeeperId, updates }) => {
-  if (!deviceId || !beekeeperId) {
-    throw new Error("deviceId and beekeeperId are required");
-  }
+/* -------------------------------------------------------------------------- */
 
-  if (!updates || updates.active === undefined) {
-    throw new Error("active update is required");
-  }
-
-  // TODO (DB layer):
-  // - verify ownership
-  // - update active flag
-  // - return updated device
-
-  return null;
+exports.getDevice = async ({ beekeeperId, deviceId }) => {
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  assertPositiveInt(deviceId, "deviceId");
+  return deviceRepo.findById({ beekeeperId, deviceId });
 };
 
-/**
- * deleteDevice
- *
- * Deletes a device if owned by the beekeeper.
- */
-exports.deleteDevice = async ({ deviceId, beekeeperId }) => {
-  if (!deviceId || !beekeeperId) {
-    throw new Error("deviceId and beekeeperId are required");
-  }
+/* -------------------------------------------------------------------------- */
 
-  // TODO (DB layer):
-  // - verify ownership
-  // - delete device
-  // - readings cascade via FK
+exports.updateDevice = async ({
+  beekeeperId,
+  deviceId,
+  installedAt,
+  lastSeenAt,
+}) => {
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  assertPositiveInt(deviceId, "deviceId");
 
-  return false;
+  return deviceRepo.update({
+    beekeeperId,
+    deviceId,
+    installedAt,
+    lastSeenAt,
+  });
+};
+
+/* -------------------------------------------------------------------------- */
+
+exports.deleteDevice = async ({ beekeeperId, deviceId }) => {
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  assertPositiveInt(deviceId, "deviceId");
+
+  return deviceRepo.remove({ beekeeperId, deviceId });
 };

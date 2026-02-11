@@ -1,105 +1,113 @@
-/**
- * Devices Repository
- * Table: device
- */
-
 "use strict";
+
+/**
+ * Devices Repository (PostgreSQL)
+ *
+ * Ownership enforcement:
+ * device → hive → beekeeper
+ */
 
 const { query } = require("./pool");
 
-/* ================================================================
- * Core device operations
- * ================================================================ */
+/* -------------------------------------------------------------------------- */
 
-/**
- * findById
- *
- * Used for:
- * - ingestion validation
- * - ownership checks (via hive)
- */
-exports.findById = async (id) => {
+exports.create = async ({ beekeeperId, hiveId, installedAt }) => {
   const sql = `
-    SELECT *
-    FROM device
-    WHERE id = ?
-    LIMIT 1
+    INSERT INTO device (hive_id, installed_at)
+    SELECT $1, $2
+    FROM hive
+    WHERE id = $1
+      AND beekeeper_id = $3
+    RETURNING *
   `;
 
-  const [rows] = await query(sql, [id]);
+  const rows = await query(sql, [hiveId, installedAt, beekeeperId]);
   return rows[0] ?? null;
 };
 
-/**
- * findActiveByHive
- *
- * Used for:
- * - dashboard display
- * - selecting current devices
- */
-exports.findActiveByHive = async (hiveId) => {
+/* -------------------------------------------------------------------------- */
+
+exports.findByBeekeeper = async (beekeeperId) => {
   const sql = `
-    SELECT *
-    FROM device
-    WHERE hive_id = ?
-      AND active = 1
-    ORDER BY installed_at DESC
+    SELECT d.*
+    FROM device d
+    JOIN hive h ON d.hive_id = h.id
+    WHERE h.beekeeper_id = $1
+    ORDER BY d.id DESC
   `;
 
-  const [rows] = await query(sql, [hiveId]);
-  return rows;
+  return query(sql, [beekeeperId]);
 };
 
-/**
- * create
- *
- * Used by:
- * - device provisioning
- */
-exports.create = async ({ hiveId, installedAt }) => {
+/* -------------------------------------------------------------------------- */
+
+exports.findById = async ({ beekeeperId, deviceId }) => {
   const sql = `
-    INSERT INTO device (hive_id, installed_at)
-    VALUES (?, ?)
+    SELECT d.*
+    FROM device d
+    JOIN hive h ON d.hive_id = h.id
+    WHERE d.id = $1
+      AND h.beekeeper_id = $2
   `;
 
-  const [result] = await query(sql, [
-    hiveId,
-    installedAt ?? null,
-  ]);
-
-  return exports.findById(result.insertId);
+  const rows = await query(sql, [deviceId, beekeeperId]);
+  return rows[0] ?? null;
 };
 
-/* ================================================================
- * Device lifecycle (STUBS)
- * ================================================================ */
+/* -------------------------------------------------------------------------- */
 
-/**
- * markInactive
- *
- * Intended for:
- * - device replacement
- */
-exports.markInactive = async (_id) => {
-  throw new Error("markInactive not implemented");
+exports.update = async ({
+  beekeeperId,
+  deviceId,
+  installedAt,
+  lastSeenAt,
+}) => {
+  const set = [];
+  const values = [];
+  let i = 1;
+
+  if (installedAt !== undefined) {
+    set.push(`installed_at = $${i++}`);
+    values.push(installedAt);
+  }
+
+  if (lastSeenAt !== undefined) {
+    set.push(`last_seen_at = $${i++}`);
+    values.push(lastSeenAt);
+  }
+
+  if (set.length === 0) {
+    return exports.findById({ beekeeperId, deviceId });
+  }
+
+  values.push(deviceId);
+  values.push(beekeeperId);
+
+  const sql = `
+    UPDATE device d
+    SET ${set.join(", ")}
+    FROM hive h
+    WHERE d.id = $${i++}
+      AND d.hive_id = h.id
+      AND h.beekeeper_id = $${i++}
+    RETURNING d.*
+  `;
+
+  const rows = await query(sql, values);
+  return rows[0] ?? null;
 };
 
-/**
- * updateLastSeen
- *
- * Intended for:
- * - heartbeat / ingestion tracking
- */
-exports.updateLastSeen = async (_id, _timestamp) => {
-  throw new Error("updateLastSeen not implemented");
-};
+/* -------------------------------------------------------------------------- */
 
-/**
- * findByHive
- *
- * Intended for:
- * - historical device listings
- */
-exports.findByHive = async (_hiveId) => {
-  throw new Error("findByHive not implemented");
+exports.remove = async ({ beekeeperId, deviceId }) => {
+  const sql = `
+    DELETE FROM device d
+    USING hive h
+    WHERE d.id = $1
+      AND d.hive_id = h.id
+      AND h.beekeeper_id = $2
+  `;
+
+  const result = await query(sql, [deviceId, beekeeperId]);
+  return result.rowCount > 0;
 };

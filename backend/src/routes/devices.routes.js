@@ -3,9 +3,8 @@
 /**
  * Device Routes
  *
- * Responsibilities:
- * - Define HTTP routes and apply middleware (wiring only)
- * - Delegate request handling to controllers
+ * Wiring only.
+ * All routes require authentication.
  */
 
 const express = require("express");
@@ -14,34 +13,10 @@ const deviceController = require("../controllers/devices.controller.js");
 
 const router = express.Router();
 
-/**
- * List devices
- * GET /api/devices
- */
-router.get("/", requireAuth, deviceController.list);
-
-/**
- * Create device
- * POST /api/devices
- */
 router.post("/", requireAuth, deviceController.create);
-
-/**
- * Get device
- * GET /api/devices/:deviceId
- */
-router.get("/:deviceId", requireAuth, deviceController.get);
-
-/**
- * Update device
- * PUT /api/devices/:deviceId
- */
-router.put("/:deviceId", requireAuth, deviceController.update);
-
-/**
- * Delete device
- * DELETE /api/devices/:deviceId
- */
-router.delete("/:deviceId", requireAuth, deviceController.remove);
+router.get("/", requireAuth, deviceController.list);
+router.get("/:id", requireAuth, deviceController.getById);
+router.patch("/:id", requireAuth, deviceController.update);
+router.delete("/:id", requireAuth, deviceController.remove);
 
 module.exports = router;
