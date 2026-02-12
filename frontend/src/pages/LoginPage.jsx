@@ -5,7 +5,6 @@ export default function LoginPage() {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    //Add authentication logic here later
     navigate('/dashboard');
   };
 
@@ -25,7 +24,6 @@ export default function LoginPage() {
       }}>
         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
           <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>Asheville</h1>
-          <p style={{ color: '#666' }}>North Carolina</p>
         </div>
         
         <form onSubmit={handleLogin}>
