@@ -5,18 +5,21 @@
  *
  * Wiring only.
  * All routes require authentication.
+ *
+ * Notes:
+ * - Creating/listing devices is primarily done via /api/hives/:hiveId/devices
+ * - This router provides "global" access patterns (across all hives)
  */
 
 const express = require("express");
 const { requireAuth } = require("../middleware/requireAuth.js");
-const deviceController = require("../controllers/devices.controller.js");
+const devicesController = require("../controllers/devices.controller.js");
 
 const router = express.Router();
 
-router.post("/", requireAuth, deviceController.create);
-router.get("/", requireAuth, deviceController.list);
-router.get("/:id", requireAuth, deviceController.getById);
-router.patch("/:id", requireAuth, deviceController.update);
-router.delete("/:id", requireAuth, deviceController.remove);
+router.get("/", requireAuth, devicesController.list);       // all devices for beekeeper
+router.get("/:id", requireAuth, devicesController.getById); // single device (scoped)
+router.patch("/:id", requireAuth, devicesController.update);
+router.delete("/:id", requireAuth, devicesController.remove);
 
 module.exports = router;

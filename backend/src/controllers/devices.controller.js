@@ -12,6 +12,8 @@
 const deviceService = require("../services/devices.service.js");
 
 /* -------------------------------------------------------------------------- */
+/* Helpers                                                                     */
+/* -------------------------------------------------------------------------- */
 
 function parsePositiveInt(value, field) {
   const n = Number(value);
@@ -33,8 +35,13 @@ function parseOptionalDate(value, field) {
   return { ok: true, value: d.toISOString() };
 }
 
+function beekeeperIdFromReq(req) {
+  return Number(req.user.id);
+}
+
 /* -------------------------------------------------------------------------- */
 /* POST /api/devices                                                           */
+/* Body: { hiveId, installedAt? }                                              */
 /* -------------------------------------------------------------------------- */
 
 exports.create = async (req, res, next) => {
@@ -52,10 +59,49 @@ exports.create = async (req, res, next) => {
     }
 
     const device = await deviceService.createDevice({
-      beekeeperId: Number(req.user.id),
+      beekeeperId: beekeeperIdFromReq(req),
       hiveId: hiveParsed.value,
       installedAt: installedParsed.value ?? null,
     });
+
+    // Service should return null when hive not found/not owned
+    if (!device) {
+      return res.status(404).json({ error: "Hive not found" });
+    }
+
+    return res.status(201).json({ device });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+/* -------------------------------------------------------------------------- */
+/* POST /api/hives/:hiveId/devices                                             */
+/* Body: { installedAt? }                                                     */
+/* -------------------------------------------------------------------------- */
+
+exports.createForHive = async (req, res, next) => {
+  try {
+    const hiveParsed = parsePositiveInt(req.params.hiveId, "hiveId");
+    if (!hiveParsed.ok) {
+      return res.status(400).json({ error: hiveParsed.error });
+    }
+
+    const { installedAt } = req.body ?? {};
+    const installedParsed = parseOptionalDate(installedAt, "installedAt");
+    if (!installedParsed.ok) {
+      return res.status(400).json({ error: installedParsed.error });
+    }
+
+    const device = await deviceService.createDevice({
+      beekeeperId: beekeeperIdFromReq(req),
+      hiveId: hiveParsed.value,
+      installedAt: installedParsed.value ?? null,
+    });
+
+    if (!device) {
+      return res.status(404).json({ error: "Hive not found" });
+    }
 
     return res.status(201).json({ device });
   } catch (err) {
@@ -70,8 +116,36 @@ exports.create = async (req, res, next) => {
 exports.list = async (req, res, next) => {
   try {
     const devices = await deviceService.listDevices({
-      beekeeperId: Number(req.user.id),
+      beekeeperId: beekeeperIdFromReq(req),
     });
+
+    return res.status(200).json({ devices });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+/* -------------------------------------------------------------------------- */
+/* GET /api/hives/:hiveId/devices                                              */
+/* -------------------------------------------------------------------------- */
+
+exports.listForHive = async (req, res, next) => {
+  try {
+    const hiveParsed = parsePositiveInt(req.params.hiveId, "hiveId");
+    if (!hiveParsed.ok) {
+      return res.status(400).json({ error: hiveParsed.error });
+    }
+
+    const devices = await deviceService.listDevicesForHive({
+      beekeeperId: beekeeperIdFromReq(req),
+      hiveId: hiveParsed.value,
+    });
+
+    // You can choose whether “hive not found” should be 404 vs empty [].
+    // I recommend 404 so clients can distinguish between "no devices" and "bad hive".
+    if (devices === null) {
+      return res.status(404).json({ error: "Hive not found" });
+    }
 
     return res.status(200).json({ devices });
   } catch (err) {
@@ -91,7 +165,7 @@ exports.getById = async (req, res, next) => {
     }
 
     const device = await deviceService.getDevice({
-      beekeeperId: Number(req.user.id),
+      beekeeperId: beekeeperIdFromReq(req),
       deviceId: parsed.value,
     });
 
@@ -107,6 +181,7 @@ exports.getById = async (req, res, next) => {
 
 /* -------------------------------------------------------------------------- */
 /* PATCH /api/devices/:id                                                      */
+/* Body: { installedAt?, lastSeenAt? }                                        */
 /* -------------------------------------------------------------------------- */
 
 exports.update = async (req, res, next) => {
@@ -138,7 +213,7 @@ exports.update = async (req, res, next) => {
     }
 
     const device = await deviceService.updateDevice({
-      beekeeperId: Number(req.user.id),
+      beekeeperId: beekeeperIdFromReq(req),
       deviceId: idParsed.value,
       installedAt: installedParsed.value,
       lastSeenAt: lastSeenParsed.value,
@@ -166,7 +241,7 @@ exports.remove = async (req, res, next) => {
     }
 
     const deleted = await deviceService.deleteDevice({
-      beekeeperId: Number(req.user.id),
+      beekeeperId: beekeeperIdFromReq(req),
       deviceId: parsed.value,
     });
 

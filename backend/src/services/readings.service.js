@@ -1,137 +1,172 @@
 "use strict";
 
 /**
- * Readings Service
+ * readings service function index
  *
- * Responsibilities:
- * - Enforce beekeeper ownership
- * - Apply domain rules
- * - Coordinate repository queries
- * - Stay HTTP-agnostic
+ * Time-series (timestamp-based only)
+ * - getHiveReadingsSince(params): Hive readings since a timestamp (optional until)
  *
- * This layer does NOT:
- * - Know Express
- * - Know req/res
- * - Return HTTP responses
+ * Latest
+ * - getLatestForHive(params): Latest reading across the hive
+ *
+ * Daily Aggregates (future)
+ * - getHiveDailySince(params): STUB — daily points since a timestamp (optional until)
+ *
+ * - notes
+ * - This service is the policy + validation gate (IDs, dates, limits, ordering)
+ * - Repo enforces ownership via joins: beekeeper -> hive -> device -> reading
+ * - No window presets here: callers must send explicit timestamps
  */
 
 const readingRepo = require("../db/readings.db.js");
 
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 1000;
+/* ========================================================================== */
+/* Errors                                                                      */
+/* ========================================================================== */
 
-/* -------------------------------------------------------------------------- */
-/* Utilities                                                                   */
-/* -------------------------------------------------------------------------- */
+function badRequest(message) {
+  const err = new Error(message);
+  err.status = 400;
+  err.code = "VALIDATION_ERROR";
+  return err;
+}
 
-function requireBeekeeper(beekeeperId) {
-  if (!Number.isInteger(beekeeperId) || beekeeperId <= 0) {
-    const err = new Error("Invalid beekeeperId");
-    err.status = 400;
-    throw err;
+/* ========================================================================== */
+/* Validation / Normalization                                                  */
+/* ========================================================================== */
+
+function requirePositiveInt(name, value) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) throw badRequest(`Invalid ${name}`);
+  return n;
+}
+
+function normalizeOrder(order) {
+  if (order === undefined || order === null || order === "") return "asc";
+  const o = String(order).toLowerCase().trim();
+  if (o !== "asc" && o !== "desc") throw badRequest("Invalid order");
+  return o;
+}
+
+function normalizeLimit(limit, { max, defaultValue }) {
+  if (limit === undefined || limit === null || limit === "") return defaultValue;
+  const n = Number(limit);
+  if (!Number.isInteger(n) || n <= 0) throw badRequest("Invalid limit");
+  return Math.min(n, max);
+}
+
+function parseDateLike(name, value) {
+  if (value === undefined || value === null || value === "") {
+    throw badRequest(`Invalid ${name}`);
   }
+
+  let d;
+  if (value instanceof Date) {
+    d = value;
+  } else if (typeof value === "string" || typeof value === "number") {
+    d = new Date(value);
+  } else {
+    throw badRequest(`Invalid ${name}`);
+  }
+
+  if (Number.isNaN(d.getTime())) throw badRequest(`Invalid ${name}`);
+  return d;
 }
 
-function normalizeLimit(limit) {
-  if (!limit) return DEFAULT_LIMIT;
-  if (limit > MAX_LIMIT) return MAX_LIMIT;
-  return limit;
+function parseOptionalUntil(sinceDate, until) {
+  if (until === undefined || until === null || until === "") return null;
+
+  const u = parseDateLike("until", until);
+  if (u.getTime() <= sinceDate.getTime()) throw badRequest("Invalid until");
+  return u;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Public API                                                                  */
-/* -------------------------------------------------------------------------- */
+/* ========================================================================== */
+/* Policy                                                                       */
+/* ========================================================================== */
+
+const HIVE_READ_LIMIT = Object.freeze({
+  defaultValue: 2000,
+  max: 10000,
+});
+
+/* ========================================================================== */
+/* Public API (Hive-first)                                                     */
+/* ========================================================================== */
 
 /**
- * getReadingsForUser
+ * getHiveReadingsSince
  *
- * Returns readings scoped to a beekeeper.
+ * Hive time-series since a timestamp (optional until).
+ *
+ * Required:
+ * - beekeeperId
+ * - hiveId
+ * - since
+ *
+ * Optional:
+ * - until (exclusive upper bound; must be > since)
+ * - limit (default 2000, max 10000)
+ * - order ("asc" default; "desc" supported)
  */
-exports.getReadingsForUser = async ({
+exports.getHiveReadingsSince = async ({
   beekeeperId,
-  deviceId,
   hiveId,
-  from,
-  to,
+  since,
+  until,
   limit,
+  order,
 }) => {
-  requireBeekeeper(beekeeperId);
+  const bkId = requirePositiveInt("beekeeperId", beekeeperId);
+  const hId = requirePositiveInt("hiveId", hiveId);
 
-  if (deviceId && hiveId) {
-    const err = new Error("Specify either deviceId or hiveId, not both");
-    err.status = 400;
-    throw err;
-  }
+  const sinceDate = parseDateLike("since", since);
+  const untilDate = parseOptionalUntil(sinceDate, until);
 
-  const finalLimit = normalizeLimit(limit);
+  const lim = normalizeLimit(limit, HIVE_READ_LIMIT);
+  const ord = normalizeOrder(order);
 
-  const readings = await readingRepo.findReadings({
-    beekeeperId,
-    deviceId,
-    hiveId,
-    from,
-    to,
-    limit: finalLimit,
+  return readingRepo.getHiveReadingsSince({
+    beekeeperId: bkId,
+    hiveId: hId,
+    since: sinceDate,
+    until: untilDate,
+    limit: lim,
+    order: ord,
   });
-
-  return readings;
 };
 
 /**
- * getLatestReadingsForUser
+ * getLatestForHive
  *
- * Returns latest reading per device
- * or for a specific device/hive.
+ * Latest reading across the hive.
  */
-exports.getLatestReadingsForUser = async ({
-  beekeeperId,
-  deviceId,
-  hiveId,
-}) => {
-  requireBeekeeper(beekeeperId);
+exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
+  const bkId = requirePositiveInt("beekeeperId", beekeeperId);
+  const hId = requirePositiveInt("hiveId", hiveId);
 
-  if (deviceId && hiveId) {
-    const err = new Error("Specify either deviceId or hiveId, not both");
-    err.status = 400;
-    throw err;
-  }
-
-  const readings = await readingRepo.findLatestReadings({
-    beekeeperId,
-    deviceId,
-    hiveId,
+  return readingRepo.getLatestForHive({
+    beekeeperId: bkId,
+    hiveId: hId,
   });
-
-  return readings;
 };
 
+/* ========================================================================== */
+/* Daily Aggregates (stub)                                                     */
+/* ========================================================================== */
+
 /**
- * getReadingStatsForUser
+ * getHiveDailySince (STUB)
  *
- * Returns aggregate statistics.
+ * Future: returns daily data points (1 row/day) from reading_daily.
+ * Signature is timestamp-based to match the rest of the API.
  */
-exports.getReadingStatsForUser = async ({
-  beekeeperId,
-  deviceId,
-  hiveId,
-  from,
-  to,
-}) => {
-  requireBeekeeper(beekeeperId);
+exports.getHiveDailySince = async ({ beekeeperId, hiveId, since, until }) => {
+  requirePositiveInt("beekeeperId", beekeeperId);
+  requirePositiveInt("hiveId", hiveId);
 
-  if (deviceId && hiveId) {
-    const err = new Error("Specify either deviceId or hiveId, not both");
-    err.status = 400;
-    throw err;
-  }
+  const sinceDate = parseDateLike("since", since);
+  parseOptionalUntil(sinceDate, until);
 
-  const stats = await readingRepo.findReadingStats({
-    beekeeperId,
-    deviceId,
-    hiveId,
-    from,
-    to,
-  });
-
-  return stats;
+  return readingRepo.getHiveDailySince(); // throws NOT_IMPLEMENTED
 };

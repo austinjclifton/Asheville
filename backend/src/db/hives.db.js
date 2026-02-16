@@ -4,59 +4,112 @@
  * Hives Repository (PostgreSQL)
  *
  * Responsibilities:
- * - SQL only
+ * - SQL only (no business rules)
  * - Parameterized queries only
  * - Enforce ownership via beekeeper_id scoping
+ *
+ * Function Index:
+ * - create({ beekeeperId, name, notes }) -> hive
+ * - listByBeekeeper({ beekeeperId }) -> hive[]
+ * - findByIdScoped({ beekeeperId, hiveId }) -> hive | null
+ * - existsScoped({ beekeeperId, hiveId }) -> boolean
+ * - updateScoped({ beekeeperId, hiveId, name?, notes? }) -> hive | null
+ * - removeScoped({ beekeeperId, hiveId }) -> boolean
+ * - countByBeekeeper({ beekeeperId }) -> number
  */
 
 const { query } = require("./pool");
 
-/* -------------------------------------------------------------------------- */
+/* ========================================================================== */
+/* Create                                                                     */
+/* ========================================================================== */
 
 exports.create = async ({ beekeeperId, name, notes }) => {
-  const sql = `
+  const rows = await query(
+    `
     INSERT INTO hive (beekeeper_id, name, notes)
     VALUES ($1, $2, $3)
     RETURNING *
-  `;
-  const rows = await query(sql, [beekeeperId, name, notes]);
+    `,
+    [beekeeperId, name, notes ?? null]
+  );
+
   return rows[0];
 };
 
-/* -------------------------------------------------------------------------- */
+/* ========================================================================== */
+/* Read                                                                       */
+/* ========================================================================== */
 
-exports.findByBeekeeper = async (beekeeperId) => {
-  const sql = `
+exports.listByBeekeeper = async ({ beekeeperId }) => {
+  return query(
+    `
     SELECT *
     FROM hive
     WHERE beekeeper_id = $1
-    ORDER BY created_at DESC
-  `;
-  return query(sql, [beekeeperId]);
+    ORDER BY created_at DESC, id DESC
+    `,
+    [beekeeperId]
+  );
 };
 
-/* -------------------------------------------------------------------------- */
-
-exports.findById = async ({ beekeeperId, hiveId }) => {
-  const sql = `
+exports.findByIdScoped = async ({ beekeeperId, hiveId }) => {
+  const rows = await query(
+    `
     SELECT *
     FROM hive
     WHERE id = $1
       AND beekeeper_id = $2
-  `;
-  const rows = await query(sql, [hiveId, beekeeperId]);
+    `,
+    [hiveId, beekeeperId]
+  );
+
   return rows[0] ?? null;
 };
 
-/* -------------------------------------------------------------------------- */
+exports.existsScoped = async ({ beekeeperId, hiveId }) => {
+  const rows = await query(
+    `
+    SELECT 1
+    FROM hive
+    WHERE id = $1
+      AND beekeeper_id = $2
+    LIMIT 1
+    `,
+    [hiveId, beekeeperId]
+  );
+
+  return rows.length > 0;
+};
+
+exports.countByBeekeeper = async ({ beekeeperId }) => {
+  const rows = await query(
+    `
+    SELECT COUNT(*)::int AS count
+    FROM hive
+    WHERE beekeeper_id = $1
+    `,
+    [beekeeperId]
+  );
+
+  return rows[0]?.count ?? 0;
+};
+
+/* ========================================================================== */
+/* Update                                                                     */
+/* ========================================================================== */
+
 /**
- * update
+ * updateScoped
  *
  * PATCH semantics:
  * - if a field is undefined: do not change it
- * - if notes is null: explicitly clear it
+ * - notes may be null: explicitly clears it
+ *
+ * Notes:
+ * - updated_at is managed by trg_hive_updated_at
  */
-exports.update = async ({ beekeeperId, hiveId, name, notes }) => {
+exports.updateScoped = async ({ beekeeperId, hiveId, name, notes }) => {
   const set = [];
   const values = [];
   let i = 1;
@@ -68,43 +121,45 @@ exports.update = async ({ beekeeperId, hiveId, name, notes }) => {
 
   if (notes !== undefined) {
     set.push(`notes = $${i++}`);
-    values.push(notes); // may be null (clear)
+    values.push(notes); // may be null to clear
   }
 
-  // Defensive: service/controller should prevent no-op updates,
-  // but repo should still be safe.
+  // No-op update: return current row (still scoped).
   if (set.length === 0) {
-    const rows = await query(
-      `SELECT * FROM hive WHERE id = $1 AND beekeeper_id = $2`,
-      [hiveId, beekeeperId]
-    );
-    return rows[0] ?? null;
+    return exports.findByIdScoped({ beekeeperId, hiveId });
   }
 
-  // WHERE clause uses beekeeper scoping as ownership enforcement.
   values.push(hiveId);
   values.push(beekeeperId);
 
-  const sql = `
+  const rows = await query(
+    `
     UPDATE hive
     SET ${set.join(", ")}
     WHERE id = $${i++}
       AND beekeeper_id = $${i++}
     RETURNING *
-  `;
+    `,
+    values
+  );
 
-  const rows = await query(sql, values);
   return rows[0] ?? null;
 };
 
-/* -------------------------------------------------------------------------- */
+/* ========================================================================== */
+/* Delete                                                                     */
+/* ========================================================================== */
 
-exports.remove = async ({ beekeeperId, hiveId }) => {
-  const sql = `
+exports.removeScoped = async ({ beekeeperId, hiveId }) => {
+  const rows = await query(
+    `
     DELETE FROM hive
     WHERE id = $1
       AND beekeeper_id = $2
-  `;
-  const result = await query(sql, [hiveId, beekeeperId]);
-  return result.rowCount > 0;
+    RETURNING id
+    `,
+    [hiveId, beekeeperId]
+  );
+
+  return rows.length > 0;
 };

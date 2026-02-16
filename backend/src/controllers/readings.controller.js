@@ -4,85 +4,79 @@
  * Readings Controller
  *
  * Responsibilities:
- * - HTTP concerns only
- * - Validate and normalize query parameters
- * - Call service layer
+ * - HTTP concerns only (Express req/res)
+ * - Minimal required-param presence checks
+ * - Delegate validation/policy to service layer
  * - Translate service results into HTTP responses
  *
  * Notes:
  * - Read-only (telemetry is immutable)
- * - Ownership enforced in service layer
+ * - Ownership is enforced by repo joins; service enforces policy/validation
+ * - Timestamp-only API: callers must provide `since` (and optional `until`)
  */
 
 const readingService = require("../services/readings.service.js");
 
 /* -------------------------------------------------------------------------- */
-/* Utilities                                                                   */
+/* Utilities                                                                  */
 /* -------------------------------------------------------------------------- */
 
-function parseOptionalInt(value, fieldName) {
-  if (value === undefined) return undefined;
-
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    const err = new Error(`${fieldName} must be a positive integer`);
-    err.status = 400;
-    throw err;
-  }
-
-  return parsed;
+function badRequest(message) {
+  const err = new Error(message);
+  err.status = 400;
+  err.code = "VALIDATION_ERROR";
+  throw err;
 }
 
-function parseOptionalDate(value, fieldName) {
-  if (!value) return undefined;
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    const err = new Error(`${fieldName} must be a valid ISO8601 timestamp`);
-    err.status = 400;
-    throw err;
+function requireQuery(req, name) {
+  const v = req.query?.[name];
+  if (v === undefined || v === null || v === "") {
+    badRequest(`${name} is required`);
   }
+  return v;
+}
 
-  return date.toISOString();
+function getBeekeeperId(req) {
+  const n = Number(req.user?.id);
+  if (!Number.isInteger(n) || n <= 0) badRequest("Invalid beekeeperId");
+  return n;
 }
 
 /* -------------------------------------------------------------------------- */
-/* GET /api/readings                                                           */
+/* GET /api/readings/since                                                    */
 /* -------------------------------------------------------------------------- */
-
-exports.list = async (req, res, next) => {
+/**
+ * Returns readings for a hive since a given timestamp (optional until).
+ *
+ * Query Params:
+ * - hiveId (required) -> positive integer
+ * - since (required)  -> ISO date/time string
+ * - until (optional)  -> ISO date/time string (exclusive upper bound)
+ * - limit (optional)  -> positive int (service caps max)
+ * - order (optional)  -> asc | desc
+ *
+ * Response:
+ * - 200 { readings: [...] }
+ */
+exports.since = async (req, res, next) => {
   try {
-    const { deviceId, hiveId, from, to, limit } = req.query ?? {};
+    const beekeeperId = getBeekeeperId(req);
 
-    if (deviceId && hiveId) {
-      return res.status(400).json({
-        error: "Specify either deviceId or hiveId, not both",
-      });
-    }
+    const hiveId = requireQuery(req, "hiveId");
+    const since = requireQuery(req, "since");
 
-    const normalizedDeviceId = parseOptionalInt(deviceId, "deviceId");
-    const normalizedHiveId = parseOptionalInt(hiveId, "hiveId");
-    const normalizedFrom = parseOptionalDate(from, "from");
-    const normalizedTo = parseOptionalDate(to, "to");
+    // Optional params: service validates + normalizes.
+    const until = req.query.until;
+    const limit = req.query.limit;
+    const order = req.query.order;
 
-    let normalizedLimit;
-    if (limit !== undefined) {
-      normalizedLimit = parseOptionalInt(limit, "limit");
-
-      if (normalizedLimit > 1000) {
-        return res.status(400).json({
-          error: "limit cannot exceed 1000",
-        });
-      }
-    }
-
-    const readings = await readingService.getReadingsForUser({
-      beekeeperId: req.user.id,
-      deviceId: normalizedDeviceId,
-      hiveId: normalizedHiveId,
-      from: normalizedFrom,
-      to: normalizedTo,
-      limit: normalizedLimit,
+    const readings = await readingService.getHiveReadingsSince({
+      beekeeperId,
+      hiveId,
+      since,
+      until,
+      limit,
+      order,
     });
 
     return res.status(200).json({ readings });
@@ -92,62 +86,35 @@ exports.list = async (req, res, next) => {
 };
 
 /* -------------------------------------------------------------------------- */
-/* GET /api/readings/latest                                                    */
+/* GET /api/readings/latest                                                   */
 /* -------------------------------------------------------------------------- */
-
+/**
+ * Returns the most recent reading for a hive.
+ *
+ * Query Params:
+ * - hiveId (required) -> positive integer
+ *
+ * Response:
+ * - 200 { reading: {...} }
+ * - 404 { error: "No readings found for hive" }
+ */
 exports.latest = async (req, res, next) => {
   try {
-    const { deviceId, hiveId } = req.query ?? {};
+    const beekeeperId = getBeekeeperId(req);
+    const hiveId = requireQuery(req, "hiveId");
 
-    if (deviceId && hiveId) {
-      return res.status(400).json({
-        error: "Specify either deviceId or hiveId, not both",
+    const reading = await readingService.getLatestForHive({
+      beekeeperId,
+      hiveId,
+    });
+
+    if (!reading) {
+      return res.status(404).json({
+        error: "No readings found for hive",
       });
     }
 
-    const normalizedDeviceId = parseOptionalInt(deviceId, "deviceId");
-    const normalizedHiveId = parseOptionalInt(hiveId, "hiveId");
-
-    const readings = await readingService.getLatestReadingsForUser({
-      beekeeperId: req.user.id,
-      deviceId: normalizedDeviceId,
-      hiveId: normalizedHiveId,
-    });
-
-    return res.status(200).json({ readings });
-  } catch (err) {
-    return next(err);
-  }
-};
-
-/* -------------------------------------------------------------------------- */
-/* GET /api/readings/stats                                                     */
-/* -------------------------------------------------------------------------- */
-
-exports.stats = async (req, res, next) => {
-  try {
-    const { deviceId, hiveId, from, to } = req.query ?? {};
-
-    if (deviceId && hiveId) {
-      return res.status(400).json({
-        error: "Specify either deviceId or hiveId, not both",
-      });
-    }
-
-    const normalizedDeviceId = parseOptionalInt(deviceId, "deviceId");
-    const normalizedHiveId = parseOptionalInt(hiveId, "hiveId");
-    const normalizedFrom = parseOptionalDate(from, "from");
-    const normalizedTo = parseOptionalDate(to, "to");
-
-    const stats = await readingService.getReadingStatsForUser({
-      beekeeperId: req.user.id,
-      deviceId: normalizedDeviceId,
-      hiveId: normalizedHiveId,
-      from: normalizedFrom,
-      to: normalizedTo,
-    });
-
-    return res.status(200).json({ stats });
+    return res.status(200).json({ reading });
   } catch (err) {
     return next(err);
   }

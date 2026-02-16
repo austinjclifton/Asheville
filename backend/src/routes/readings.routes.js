@@ -4,13 +4,14 @@
  * Reading Routes
  *
  * Responsibilities:
- * - Define authenticated reading retrieval endpoints
+ * - Define authenticated, read-only reading retrieval endpoints
  * - Apply requireAuth middleware
- * - Delegate all logic to controller
+ * - Delegate all request handling to controller
  *
  * Design Principles:
  * - Read-only (telemetry is immutable)
- * - Filter-based querying
+ * - Hive-scoped queries (frontend knows hiveId, not deviceId)
+ * - Timestamp-based querying only (since required; until optional)
  * - No mutation routes
  */
 
@@ -21,44 +22,35 @@ const readingController = require("../controllers/readings.controller.js");
 const router = express.Router();
 
 /* -------------------------------------------------------------------------- */
-/* Authenticated Reading Retrieval                                             */
+/* GET /api/readings/since                                                    */
 /* -------------------------------------------------------------------------- */
-
 /**
- * GET /api/readings
+ * Returns readings for a hive since a given timestamp (safe flexible range).
  *
- * Flexible reading query endpoint.
+ * Required query params:
+ * - hiveId: positive integer
+ * - since: ISO date/time string
  *
- * Query params:
- * - deviceId (optional)
- * - hiveId (optional)
- * - from (ISO timestamp, optional)
- * - to (ISO timestamp, optional)
- * - limit (optional, default enforced in service)
+ * Optional query params:
+ * - until: ISO date/time string (exclusive upper bound)
+ * - limit: positive integer (service caps max)
+ * - order: asc | desc
  *
- * Returns readings scoped to authenticated beekeeper.
+ * Scoped to authenticated beekeeper.
  */
-router.get("/", requireAuth, readingController.list);
+router.get("/since", requireAuth, readingController.since);
 
+/* -------------------------------------------------------------------------- */
+/* GET /api/readings/latest                                                   */
+/* -------------------------------------------------------------------------- */
 /**
- * GET /api/readings/latest
+ * Returns the most recent reading for a hive.
  *
- * Returns latest reading per device
- * scoped to authenticated beekeeper.
+ * Required query params:
+ * - hiveId: positive integer
+ *
+ * Scoped to authenticated beekeeper.
  */
 router.get("/latest", requireAuth, readingController.latest);
-
-/**
- * GET /api/readings/stats
- *
- * Returns aggregate statistics:
- * - min
- * - max
- * - avg
- * - count
- *
- * Filterable by deviceId, hiveId, from, to.
- */
-router.get("/stats", requireAuth, readingController.stats);
 
 module.exports = router;
