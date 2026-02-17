@@ -1,30 +1,25 @@
 "use strict";
 
 /**
- * readings repo function index
+ * Readings Repository (PostgreSQL)
+ * Table: reading
  *
- * Ingest
- * - createReading(payload): Insert a reading for a device (ingest-only; relies on DB constraints)
+ * Responsibilities:
+ * - SQL only (no business rules)
+ * - Parameterized queries only
+ * - Enforce ownership for dashboard reads via joins:
+ *   beekeeper -> hive -> device -> reading
  *
- * Hive Reads (dashboard-facing)
- * - getHiveReadingsSince(params): Time-series readings for a hive since (and optional until)
- * - getLatestForHive(params): Latest reading row across a hive
- *
- * Daily Aggregates (future)
- * - getHiveDailySince(params): STUB — daily aggregate series for a hive since (and optional until)
- * - getLatestDailyForHive(params): STUB — latest daily aggregate row for a hive
- *
- * - notes
- * - This repo assumes inputs are validated/normalized by the service layer
- * - Ownership is enforced in SQL via joins: beekeeper -> hive -> device -> reading
+ * Notes:
+ * - Inputs are validated/normalized by the service layer
+ * - Ingest inserts are device-scoped (no beekeeper join here)
  */
 
 const { query } = require("./pool");
 
-/* ========================================================================== */
-/* helpers (ai-generated)                                                     */
-/* ========================================================================== */
-
+/**
+ * Map common Postgres constraint errors to stable API errors.
+ */
 function mapPgError(err) {
   // Unique violation (e.g., uq_reading_device_recorded_at)
   if (err?.code === "23505") {
@@ -42,7 +37,7 @@ function mapPgError(err) {
     return e;
   }
 
-  // Check constraint violation (temperature/battery checks)
+  // Check constraint violation (range checks)
   if (err?.code === "23514") {
     const e = new Error("Invalid reading values");
     e.status = 400;
@@ -50,7 +45,7 @@ function mapPgError(err) {
     return e;
   }
 
-  // Numeric value out of range / invalid cast etc.
+  // Numeric out of range / invalid text representation
   if (err?.code === "22003" || err?.code === "22P02") {
     const e = new Error("Invalid reading values");
     e.status = 400;
@@ -62,32 +57,17 @@ function mapPgError(err) {
 }
 
 /**
- * ORDER BY keyword cannot be parameterized.
- * Service should pass "asc"/"desc" or "ASC"/"DESC".
+ * ORDER BY direction cannot be parameterized; guard against injection.
  */
 function toOrderSql(order) {
-  const o = String(order || "asc").toLowerCase();
+  const o = String(order ?? "asc").toLowerCase().trim();
   if (o === "asc") return "ASC";
   if (o === "desc") return "DESC";
-  // If service is correct, we never hit this.
-  // Still guard to avoid accidental injection through order.
   return "ASC";
 }
 
-/* ========================================================================== */
-/* ============================= INGEST LAYER =============================== */
-/* ========================================================================== */
-
 /**
- * createReading
- *
- * Used ONLY by ingest service.
- * Does not enforce beekeeper ownership (ingest auth should gate this).
- *
- * Expected normalized inputs:
- * - deviceId: integer
- * - recordedAt: Date
- * - temperatureF: number
+ * Insert a reading for a device (ingest-only; relies on DB constraints).
  */
 exports.createReading = async ({
   deviceId,
@@ -112,7 +92,7 @@ exports.createReading = async ({
       [deviceId, recordedAt, temperatureF, batteryVoltage, signalStrength]
     );
 
-    return rows[0];
+    return rows[0] ?? null;
   } catch (err) {
     const mapped = mapPgError(err);
     if (mapped) throw mapped;
@@ -120,26 +100,8 @@ exports.createReading = async ({
   }
 };
 
-/* ========================================================================== */
-/* ============================ DASHBOARD LAYER ============================= */
-/* ========================================================================== */
-
 /**
- * getHiveReadingsSince
- *
  * Time-series readings for a hive since (optional until).
- *
- * Expected normalized inputs:
- * - beekeeperId: integer
- * - hiveId: integer
- * - since: Date
- * - until: Date | null (exclusive upper bound)
- * - limit: integer
- * - order: "asc" | "desc"
- *
- * Recommended indexes:
- * - device(hive_id)
- * - reading(device_id, recorded_at DESC)
  */
 exports.getHiveReadingsSince = async ({
   beekeeperId,
@@ -151,7 +113,7 @@ exports.getHiveReadingsSince = async ({
 }) => {
   const orderSql = toOrderSql(order);
 
-  const rows = await query(
+  return query(
     `
     SELECT
       r.id,
@@ -173,14 +135,10 @@ exports.getHiveReadingsSince = async ({
     `,
     [beekeeperId, hiveId, since, until, limit]
   );
-
-  return rows;
 };
 
 /**
- * getLatestForHive
- *
- * Latest reading across the hive (single newest reading among all devices).
+ * Latest reading across the hive.
  */
 exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
   const rows = await query(
@@ -204,23 +162,11 @@ exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
     [beekeeperId, hiveId]
   );
 
-  return rows[0] || null;
+  return rows[0] ?? null;
 };
 
-/* ========================================================================== */
-/* ========================== DAILY AGGREGATES (STUBS) ====================== */
-/* ========================================================================== */
-
 /**
- * getHiveDailySince (STUB)
- *
- * Future: query a daily rollup table (e.g., reading_daily) that stores one row per hive per day,
- * such as min/max/avg temperature and reading_count.
- *
- * Expected future schema idea:
- * - reading_daily(hive_id, day_date, avg_temp_f, min_temp_f, max_temp_f, reading_count, ...)
- *
- * For now, this is intentionally not implemented to avoid expensive GROUP BY on raw readings.
+ * Daily aggregates since a timestamp (stub).
  */
 exports.getHiveDailySince = async () => {
   const e = new Error("Daily aggregates not implemented");
@@ -230,9 +176,7 @@ exports.getHiveDailySince = async () => {
 };
 
 /**
- * getLatestDailyForHive (STUB)
- *
- * Future: latest daily rollup row for the hive.
+ * Latest daily aggregate row for a hive (stub).
  */
 exports.getLatestDailyForHive = async () => {
   const e = new Error("Daily aggregates not implemented");

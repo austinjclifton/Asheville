@@ -9,20 +9,12 @@
  * - Retrieve and mutate session state
  * - Enforce data-level session invariants
  *
- * This repository:
- * - Knows SQL
- * - Knows table structure
- * - Does NOT know business rules
- *
- * Note:
- * - Table name is quoted because "session" is a reserved keyword in SQL.
+ * Notes:
+ * - Table name is quoted because "session" is reserved in SQL.
+ * - This layer knows SQL and table shape, not business rules.
  */
 
 const { query } = require("./pool");
-
-/* ================================================================
- * Column definitions
- * ================================================================ */
 
 const BASE_COLUMNS = `
   id,
@@ -39,11 +31,20 @@ const AUTH_COLUMNS = `
   csrf_token
 `;
 
-/* ================================================================
- * Internal helpers
- * ================================================================ */
+const LOOKUP_COLUMN = Object.freeze({
+  id: "id",
+  sessionToken: "session_token",
+});
 
-async function findOneBy({ column, value, columns }) {
+/**
+ * Find a single session row by a whitelisted column.
+ */
+async function findOneBy({ columnKey, value, columns }) {
+  const column = LOOKUP_COLUMN[columnKey];
+  if (!column) {
+    throw new Error("Invalid lookup column");
+  }
+
   const rows = await query(
     `
     SELECT ${columns}
@@ -51,22 +52,16 @@ async function findOneBy({ column, value, columns }) {
     WHERE ${column} = $1
     LIMIT 1
     `,
-    [value],
+    [value]
   );
 
   return rows[0] ?? null;
 }
 
-/* ================================================================
- * Creation
- * ================================================================ */
-
-exports.create = async ({
-  beekeeperId,
-  sessionToken,
-  csrfToken,
-  expiresAt,
-}) => {
+/**
+ * Create a new session record.
+ */
+exports.create = async ({ beekeeperId, sessionToken, csrfToken, expiresAt }) => {
   const rows = await query(
     `
     INSERT INTO "session" (
@@ -81,91 +76,101 @@ exports.create = async ({
     VALUES ($1, $2, $3, $4, TRUE, now(), now())
     RETURNING ${AUTH_COLUMNS}
     `,
-    [beekeeperId, sessionToken, csrfToken, expiresAt],
+    [beekeeperId, sessionToken, csrfToken, expiresAt]
   );
 
-  return rows[0];
+  return rows[0] ?? null;
 };
 
-/* ================================================================
- * Lookups
- * ================================================================ */
-
+/**
+ * Look up a session by id (non-sensitive projection).
+ */
 exports.findById = async (sessionId) => {
   return findOneBy({
-    column: "id",
+    columnKey: "id",
     value: sessionId,
     columns: BASE_COLUMNS,
   });
 };
 
+/**
+ * Look up a session by token (auth projection).
+ */
 exports.findByToken = async (sessionToken) => {
   return findOneBy({
-    column: "session_token",
+    columnKey: "sessionToken",
     value: sessionToken,
     columns: AUTH_COLUMNS,
   });
 };
 
-/* ================================================================
- * Invalidation (soft delete)
- * ================================================================ */
-
+/**
+ * Soft-invalidate a session (active=false).
+ * Returns true if a row was updated.
+ */
 exports.invalidate = async (sessionId) => {
-  const result = await query(
+  const rows = await query(
     `
     UPDATE "session"
     SET active = FALSE
     WHERE id = $1
+    RETURNING id
     `,
-    [sessionId],
+    [sessionId]
   );
 
-  return result.rowCount === 1;
+  return rows.length === 1;
 };
 
+/**
+ * Soft-invalidate all sessions for a beekeeper.
+ * Returns true if at least one row was updated.
+ */
 exports.invalidateAllForBeekeeper = async (beekeeperId) => {
-  const result = await query(
+  const rows = await query(
     `
     UPDATE "session"
     SET active = FALSE
     WHERE beekeeper_id = $1
+    RETURNING id
     `,
-    [beekeeperId],
+    [beekeeperId]
   );
 
-  return result.rowCount > 0;
+  return rows.length > 0;
 };
 
-/* ================================================================
- * Deletion (hard delete)
- * ================================================================ */
-
+/**
+ * Hard-delete all sessions for a beekeeper.
+ * Returns true if at least one row was deleted.
+ */
 exports.deleteAllForBeekeeper = async (beekeeperId) => {
-  const result = await query(
+  const rows = await query(
     `
     DELETE FROM "session"
     WHERE beekeeper_id = $1
+    RETURNING id
     `,
-    [beekeeperId],
+    [beekeeperId]
   );
 
-  return result.rowCount > 0;
+  return rows.length > 0;
 };
 
-/* ================================================================
- * Activity tracking
- * ================================================================ */
-
+/**
+ * Update last-activity timestamp for a session.
+ * Returns true if a row was updated.
+ */
 exports.touch = async (sessionId) => {
-  const result = await query(
+  const rows = await query(
     `
     UPDATE "session"
     SET last_activity_at = now()
     WHERE id = $1
+    RETURNING id
     `,
-    [sessionId],
+    [sessionId]
   );
 
-  return result.rowCount === 1;
+  return rows.length === 1;
 };

@@ -2,28 +2,19 @@
 
 /**
  * Hives Repository (PostgreSQL)
+ * Table: hive
  *
  * Responsibilities:
  * - SQL only (no business rules)
  * - Parameterized queries only
  * - Enforce ownership via beekeeper_id scoping
- *
- * Function Index:
- * - create({ beekeeperId, name, notes }) -> hive
- * - listByBeekeeper({ beekeeperId }) -> hive[]
- * - findByIdScoped({ beekeeperId, hiveId }) -> hive | null
- * - existsScoped({ beekeeperId, hiveId }) -> boolean
- * - updateScoped({ beekeeperId, hiveId, name?, notes? }) -> hive | null
- * - removeScoped({ beekeeperId, hiveId }) -> boolean
- * - countByBeekeeper({ beekeeperId }) -> number
  */
 
 const { query } = require("./pool");
 
-/* ========================================================================== */
-/* Create                                                                     */
-/* ========================================================================== */
-
+/**
+ * Create a hive row.
+ */
 exports.create = async ({ beekeeperId, name, notes }) => {
   const rows = await query(
     `
@@ -34,13 +25,12 @@ exports.create = async ({ beekeeperId, name, notes }) => {
     [beekeeperId, name, notes ?? null]
   );
 
-  return rows[0];
+  return rows[0] ?? null;
 };
 
-/* ========================================================================== */
-/* Read                                                                       */
-/* ========================================================================== */
-
+/**
+ * List hives for a beekeeper (newest first).
+ */
 exports.listByBeekeeper = async ({ beekeeperId }) => {
   return query(
     `
@@ -53,6 +43,9 @@ exports.listByBeekeeper = async ({ beekeeperId }) => {
   );
 };
 
+/**
+ * Find a hive by id, scoped to beekeeper ownership.
+ */
 exports.findByIdScoped = async ({ beekeeperId, hiveId }) => {
   const rows = await query(
     `
@@ -60,6 +53,7 @@ exports.findByIdScoped = async ({ beekeeperId, hiveId }) => {
     FROM hive
     WHERE id = $1
       AND beekeeper_id = $2
+    LIMIT 1
     `,
     [hiveId, beekeeperId]
   );
@@ -67,6 +61,9 @@ exports.findByIdScoped = async ({ beekeeperId, hiveId }) => {
   return rows[0] ?? null;
 };
 
+/**
+ * Check whether a hive exists and is owned by the beekeeper.
+ */
 exports.existsScoped = async ({ beekeeperId, hiveId }) => {
   const rows = await query(
     `
@@ -82,6 +79,9 @@ exports.existsScoped = async ({ beekeeperId, hiveId }) => {
   return rows.length > 0;
 };
 
+/**
+ * Count hives for a beekeeper.
+ */
 exports.countByBeekeeper = async ({ beekeeperId }) => {
   const rows = await query(
     `
@@ -95,19 +95,10 @@ exports.countByBeekeeper = async ({ beekeeperId }) => {
   return rows[0]?.count ?? 0;
 };
 
-/* ========================================================================== */
-/* Update                                                                     */
-/* ========================================================================== */
-
 /**
- * updateScoped
- *
- * PATCH semantics:
- * - if a field is undefined: do not change it
- * - notes may be null: explicitly clears it
- *
- * Notes:
- * - updated_at is managed by trg_hive_updated_at
+ * Patch hive fields (scoped).
+ * - undefined fields are not changed
+ * - notes may be null to clear
  */
 exports.updateScoped = async ({ beekeeperId, hiveId, name, notes }) => {
   const set = [];
@@ -121,16 +112,15 @@ exports.updateScoped = async ({ beekeeperId, hiveId, name, notes }) => {
 
   if (notes !== undefined) {
     set.push(`notes = $${i++}`);
-    values.push(notes); // may be null to clear
+    values.push(notes);
   }
 
-  // No-op update: return current row (still scoped).
+  // No-op PATCH: return current row (still scoped).
   if (set.length === 0) {
     return exports.findByIdScoped({ beekeeperId, hiveId });
   }
 
-  values.push(hiveId);
-  values.push(beekeeperId);
+  values.push(hiveId, beekeeperId);
 
   const rows = await query(
     `
@@ -146,10 +136,10 @@ exports.updateScoped = async ({ beekeeperId, hiveId, name, notes }) => {
   return rows[0] ?? null;
 };
 
-/* ========================================================================== */
-/* Delete                                                                     */
-/* ========================================================================== */
-
+/**
+ * Delete a hive by id (scoped).
+ * Returns true if a row was deleted.
+ */
 exports.removeScoped = async ({ beekeeperId, hiveId }) => {
   const rows = await query(
     `

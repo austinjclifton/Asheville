@@ -1,54 +1,26 @@
 "use strict";
 
 /**
- * device repo
+ * Devices Repository (PostgreSQL)
+ * Table: device
  *
- * Ownership enforcement:
- * device → hive → beekeeper
+ * Responsibilities:
+ * - SQL only (no business rules)
+ * - Parameterized queries only
+ * - Enforce ownership via joins: device -> hive -> beekeeper
  *
- * Function Index:
- * - createScoped({ beekeeperId, hiveId, installedAt?, lastSeenAt? }) -> device | null
- * - listByBeekeeper({ beekeeperId }) -> device[]
- * - listByHiveScoped({ beekeeperId, hiveId }) -> device[]               (kept for compatibility; max 1)
- * - findByHiveScoped({ beekeeperId, hiveId }) -> device | null          (preferred for 1:1)
- * - findByIdScoped({ beekeeperId, deviceId }) -> device | null
- * - existsScoped({ beekeeperId, deviceId }) -> boolean
- * - updateScoped({ beekeeperId, deviceId, installedAt?, lastSeenAt? }) -> device | null
- * - touchLastSeenScoped({ beekeeperId, deviceId, seenAt? }) -> device | null
- * - removeScoped({ beekeeperId, deviceId }) -> boolean
+ * Notes:
+ * - Under 1:1 hive<->device, DB should enforce UNIQUE(device.hive_id)
  */
 
 const { query } = require("./pool");
 
-/* ========================================================================== */
-/* Create                                                                     */
-/* ========================================================================== */
-
 /**
- * createScoped
- *
- * Inserts only if:
- * - hive exists
- * - hive belongs to beekeeper
- *
- * For 1:1 hive↔device, the DB should enforce UNIQUE(device.hive_id).
- *
- * Returns:
- * - device row if inserted
- * - null if hive not found / not owned
- *
- * Throws:
- * - Postgres unique violation (23505) if hive already has a device
- *   (service layer should translate to 409 Conflict)
+ * Insert a device for a hive, only when the hive is owned by the beekeeper.
+ * Returns the inserted row, or null when hive is not found / not owned.
  */
-exports.createScoped = async ({
-  beekeeperId,
-  hiveId,
-  installedAt,
-  lastSeenAt,
-}) => {
-  // If installedAt is provided, we explicitly set it.
-  // If installedAt is null/undefined, we omit it so DB DEFAULT now() applies.
+exports.createScoped = async ({ beekeeperId, hiveId, installedAt, lastSeenAt }) => {
+  // If installedAt is provided (non-null), set it; otherwise let DB default apply.
   const hasInstalledAt = installedAt !== undefined && installedAt !== null;
 
   const sql = hasInstalledAt
@@ -77,10 +49,9 @@ exports.createScoped = async ({
   return rows[0] ?? null;
 };
 
-/* ========================================================================== */
-/* Read                                                                       */
-/* ========================================================================== */
-
+/**
+ * List all devices for a beekeeper.
+ */
 exports.listByBeekeeper = async ({ beekeeperId }) => {
   return query(
     `
@@ -90,15 +61,13 @@ exports.listByBeekeeper = async ({ beekeeperId }) => {
     WHERE h.beekeeper_id = $1
     ORDER BY d.id DESC
     `,
-    [beekeeperId],
+    [beekeeperId]
   );
 };
 
 /**
- * listByHiveScoped
- *
- * Kept to preserve integrity of existing callers that expect an array.
- * Under 1:1, this will return either [] or [device].
+ * List devices for a hive (scoped).
+ * Kept for compatibility with callers expecting an array (0..1 under 1:1).
  */
 exports.listByHiveScoped = async ({ beekeeperId, hiveId }) => {
   return query(
@@ -110,14 +79,12 @@ exports.listByHiveScoped = async ({ beekeeperId, hiveId }) => {
       AND h.beekeeper_id = $2
     ORDER BY d.id DESC
     `,
-    [hiveId, beekeeperId],
+    [hiveId, beekeeperId]
   );
 };
 
 /**
- * findByHiveScoped
- *
- * Preferred helper for 1:1 hive↔device.
+ * Find a device for a hive (scoped). Preferred for 1:1.
  */
 exports.findByHiveScoped = async ({ beekeeperId, hiveId }) => {
   const rows = await query(
@@ -129,12 +96,15 @@ exports.findByHiveScoped = async ({ beekeeperId, hiveId }) => {
       AND h.beekeeper_id = $2
     LIMIT 1
     `,
-    [hiveId, beekeeperId],
+    [hiveId, beekeeperId]
   );
 
   return rows[0] ?? null;
 };
 
+/**
+ * Find a device by id (scoped).
+ */
 exports.findByIdScoped = async ({ beekeeperId, deviceId }) => {
   const rows = await query(
     `
@@ -143,13 +113,17 @@ exports.findByIdScoped = async ({ beekeeperId, deviceId }) => {
     JOIN hive h ON h.id = d.hive_id
     WHERE d.id = $1
       AND h.beekeeper_id = $2
+    LIMIT 1
     `,
-    [deviceId, beekeeperId],
+    [deviceId, beekeeperId]
   );
 
   return rows[0] ?? null;
 };
 
+/**
+ * Check device existence by id (scoped).
+ */
 exports.existsScoped = async ({ beekeeperId, deviceId }) => {
   const rows = await query(
     `
@@ -160,29 +134,18 @@ exports.existsScoped = async ({ beekeeperId, deviceId }) => {
       AND h.beekeeper_id = $2
     LIMIT 1
     `,
-    [deviceId, beekeeperId],
+    [deviceId, beekeeperId]
   );
 
   return rows.length > 0;
 };
 
-/* ========================================================================== */
-/* Update                                                                     */
-/* ========================================================================== */
-
 /**
- * updateScoped
- *
- * PATCH semantics:
- * - if a field is undefined: do not change it
- * - if a field is null: set it to NULL
+ * Patch device fields (scoped).
+ * - undefined fields are not changed
+ * - null values set the column to NULL
  */
-exports.updateScoped = async ({
-  beekeeperId,
-  deviceId,
-  installedAt,
-  lastSeenAt,
-}) => {
+exports.updateScoped = async ({ beekeeperId, deviceId, installedAt, lastSeenAt }) => {
   const set = [];
   const values = [];
   let i = 1;
@@ -197,14 +160,12 @@ exports.updateScoped = async ({
     values.push(lastSeenAt);
   }
 
-  // No-op patch: return current row (scoped)
+  // No-op patch: return current row (scoped).
   if (set.length === 0) {
     return exports.findByIdScoped({ beekeeperId, deviceId });
   }
 
-  // WHERE placeholders
-  values.push(deviceId);
-  values.push(beekeeperId);
+  values.push(deviceId, beekeeperId);
 
   const rows = await query(
     `
@@ -216,17 +177,15 @@ exports.updateScoped = async ({
       AND h.beekeeper_id = $${i++}
     RETURNING d.*
     `,
-    values,
+    values
   );
 
   return rows[0] ?? null;
 };
 
 /**
- * touchLastSeenScoped
- *
- * Convenience helper for “device ping / ingest” flows.
- * Default is now() if seenAt is undefined.
+ * Touch last_seen_at for a device (scoped).
+ * If seenAt is undefined/null, defaults to now().
  */
 exports.touchLastSeenScoped = async ({ beekeeperId, deviceId, seenAt }) => {
   const rows = await query(
@@ -239,16 +198,16 @@ exports.touchLastSeenScoped = async ({ beekeeperId, deviceId, seenAt }) => {
       AND h.beekeeper_id = $3
     RETURNING d.*
     `,
-    [seenAt ?? null, deviceId, beekeeperId],
+    [seenAt ?? null, deviceId, beekeeperId]
   );
 
   return rows[0] ?? null;
 };
 
-/* ========================================================================== */
-/* Delete                                                                     */
-/* ========================================================================== */
-
+/**
+ * Delete a device by id (scoped).
+ * Returns true if a row was deleted.
+ */
 exports.removeScoped = async ({ beekeeperId, deviceId }) => {
   const rows = await query(
     `
@@ -259,7 +218,7 @@ exports.removeScoped = async ({ beekeeperId, deviceId }) => {
       AND h.beekeeper_id = $2
     RETURNING d.id
     `,
-    [deviceId, beekeeperId],
+    [deviceId, beekeeperId]
   );
 
   return rows.length > 0;
