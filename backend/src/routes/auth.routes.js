@@ -41,7 +41,12 @@ router.post("/logout", requireAuth, requireCsrf, authController.logout);
  * POST /api/auth/change-password
  * Change the authenticated user's password. (Auth + CSRF)
  */
-router.post("/change-password", requireAuth, requireCsrf, authController.changePassword);
+router.post(
+  "/change-password",
+  requireAuth,
+  requireCsrf,
+  authController.changePassword,
+);
 
 /**
  * GET /api/auth/me
