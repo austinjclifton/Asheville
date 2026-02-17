@@ -5,9 +5,9 @@
  *
  * Responsibilities:
  * - HTTP concerns only (Express req/res)
- * - Validate request inputs at the boundary
- * - Delegate business logic to services
- * - Translate service outcomes into HTTP responses
+ * - Light boundary validation + normalization
+ * - Delegate all business logic to services
+ * - Use next(err) consistently for error handling
  *
  * Security model:
  * - Session token is stored in HttpOnly `sessionId` cookie
@@ -19,34 +19,43 @@ const authService = require("../services/auth.service.js");
 const sessionService = require("../services/sessions.service.js");
 const passwordResetService = require("../services/passwordReset.service.js");
 
-/**
- * Cookie options used when setting the session cookie.
- * Keep aligned with deployment expectations (secure in production).
- */
-function getSessionCookieOptions() {
-  return {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-  };
-}
+const {
+  setSessionCookie,
+  clearSessionCookie,
+} = require("../utils/sessionCookie.js");
 
-/**
- * Cookie options used when clearing the session cookie.
- * Must match the cookie path used when setting the cookie.
- */
-function getSessionClearOptions() {
-  return { path: "/" };
-}
+/* ========================================================================== */
+/* Helpers                                                                     */
+/* ========================================================================== */
 
-/**
- * Defensive helper for request bodies.
- */
 function safeBody(req) {
   return req.body ?? {};
 }
+
+function asTrimmedString(value) {
+  if (typeof value !== "string") return null;
+  const t = value.trim();
+  return t.length ? t : null;
+}
+
+function badRequest(message) {
+  const err = new Error(message);
+  err.status = 400;
+  return err;
+}
+
+function assertAuthedUserId(req) {
+  const id = Number(req.user?.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    // Should be impossible if requireAuth is correct; fail closed.
+    throw badRequest("Invalid authenticated user");
+  }
+  return id;
+}
+
+/* ========================================================================== */
+/* Handlers                                                                    */
+/* ========================================================================== */
 
 /**
  * POST /api/auth/register
@@ -54,13 +63,14 @@ function safeBody(req) {
  */
 exports.register = async (req, res, next) => {
   try {
-    const { username, email, password } = safeBody(req);
+    const body = safeBody(req);
 
-    // Basic shape validation at the HTTP boundary.
+    const username = asTrimmedString(body.username);
+    const email = asTrimmedString(body.email);
+    const password = asTrimmedString(body.password);
+
     if (!username || !email || !password) {
-      return res.status(400).json({
-        error: "username, email, and password are required",
-      });
+      throw badRequest("username, email, and password are required");
     }
 
     const result = await authService.register({
@@ -70,12 +80,7 @@ exports.register = async (req, res, next) => {
       context: req.context,
     });
 
-    // Persist session via HttpOnly cookie; return CSRF token in JSON.
-    res.cookie(
-      "sessionId",
-      result.session.sessionToken,
-      getSessionCookieOptions(),
-    );
+    setSessionCookie(res, result.session.sessionToken);
 
     return res.status(201).json({
       user: result.user,
@@ -92,13 +97,13 @@ exports.register = async (req, res, next) => {
  */
 exports.login = async (req, res, next) => {
   try {
-    const { identifier, password } = safeBody(req);
+    const body = safeBody(req);
 
-    // Basic shape validation at the HTTP boundary.
+    const identifier = asTrimmedString(body.identifier);
+    const password = asTrimmedString(body.password);
+
     if (!identifier || !password) {
-      return res.status(400).json({
-        error: "identifier and password are required",
-      });
+      throw badRequest("identifier and password are required");
     }
 
     const result = await authService.login({
@@ -107,12 +112,7 @@ exports.login = async (req, res, next) => {
       context: req.context,
     });
 
-    // Persist session via HttpOnly cookie; return CSRF token in JSON.
-    res.cookie(
-      "sessionId",
-      result.session.sessionToken,
-      getSessionCookieOptions(),
-    );
+    setSessionCookie(res, result.session.sessionToken);
 
     return res.status(200).json({
       user: result.user,
@@ -125,22 +125,18 @@ exports.login = async (req, res, next) => {
 
 /**
  * POST /api/auth/logout
- * Invalidate the current session (CSRF required).
+ * Invalidate the current session (Auth + CSRF).
  */
 exports.logout = async (req, res, next) => {
   try {
-    const sessionToken = req.cookies?.sessionId;
+    // requireAuth should guarantee req.session exists, but fail safely.
+    const sessionToken = req.session?.sessionToken;
 
-    // If the cookie is missing, treat as already logged out.
-    if (!sessionToken) {
-      return res.status(200).json({ success: true });
+    if (typeof sessionToken === "string" && sessionToken.length) {
+      await sessionService.invalidateSession({ sessionToken });
     }
 
-    await sessionService.invalidateSession({ sessionToken });
-
-    // Clear cookie regardless of invalidate outcome (best-effort logout).
-    res.clearCookie("sessionId", getSessionClearOptions());
-
+    clearSessionCookie(res);
     return res.status(200).json({ success: true });
   } catch (err) {
     return next(err);
@@ -149,21 +145,21 @@ exports.logout = async (req, res, next) => {
 
 /**
  * POST /api/auth/change-password
- * Change the authenticated user's password (CSRF required).
+ * Change the authenticated user's password (Auth + CSRF).
  */
 exports.changePassword = async (req, res, next) => {
   try {
-    const { currentPassword, newPassword } = safeBody(req);
+    const body = safeBody(req);
 
-    // Basic shape validation at the HTTP boundary.
+    const currentPassword = asTrimmedString(body.currentPassword);
+    const newPassword = asTrimmedString(body.newPassword);
+
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        error: "currentPassword and newPassword are required",
-      });
+      throw badRequest("currentPassword and newPassword are required");
     }
 
     await authService.changePassword({
-      userId: Number(req.user.id),
+      userId: assertAuthedUserId(req),
       currentPassword,
       newPassword,
     });
@@ -180,15 +176,16 @@ exports.changePassword = async (req, res, next) => {
  */
 exports.requestPasswordReset = async (req, res, next) => {
   try {
-    const { email } = safeBody(req);
+    const body = safeBody(req);
+    const email = asTrimmedString(body.email);
 
-    // Require an email shape, but do not reveal whether it exists.
     if (!email) {
-      return res.status(400).json({ error: "email is required" });
+      throw badRequest("email is required");
     }
 
     await passwordResetService.requestResetForEmail({ email });
 
+    // Always succeed to prevent user enumeration.
     return res.status(200).json({ success: true });
   } catch (err) {
     return next(err);
@@ -197,31 +194,27 @@ exports.requestPasswordReset = async (req, res, next) => {
 
 /**
  * POST /api/auth/reset-password/confirm
- * Complete a password reset using a one-time reset token.
+ * Complete a password reset using a one-time token.
  */
 exports.confirmPasswordReset = async (req, res, next) => {
   try {
-    const { token, newPassword } = safeBody(req);
+    const body = safeBody(req);
 
-    // Basic shape validation at the HTTP boundary.
+    const token = asTrimmedString(body.token);
+    const newPassword = asTrimmedString(body.newPassword);
+
     if (!token || !newPassword) {
-      return res.status(400).json({
-        error: "token and newPassword are required",
-      });
+      throw badRequest("token and newPassword are required");
     }
 
-    // Verify token first (do not consume until reset succeeds).
     const verification = await passwordResetService.verifyResetToken({
       rawToken: token,
     });
 
     if (!verification) {
-      return res.status(400).json({
-        error: "Invalid or expired reset token",
-      });
+      throw badRequest("Invalid or expired reset token");
     }
 
-    // Reset password, then consume token only after success.
     await authService.resetPassword({
       userId: Number(verification.userId),
       newPassword,
@@ -239,43 +232,44 @@ exports.confirmPasswordReset = async (req, res, next) => {
 
 /**
  * GET /api/auth/csrf
- * Return the CSRF token for the current session.
+ * Return the CSRF token for the current session (Auth).
  */
-exports.csrf = async (req, res) => {
-  return res.status(200).json({ csrfToken: req.session.csrfToken });
+exports.csrf = async (req, res, next) => {
+  try {
+    return res.status(200).json({ csrfToken: req.session.csrfToken });
+  } catch (err) {
+    return next(err);
+  }
 };
 
 /**
  * GET /api/auth/me
- * Return the authenticated user's public profile.
+ * Return the authenticated user's public profile (Auth).
  */
-exports.me = async (req, res) => {
-  return res.status(200).json({ user: req.user });
+exports.me = async (req, res, next) => {
+  try {
+    return res.status(200).json({ user: req.user });
+  } catch (err) {
+    return next(err);
+  }
 };
 
 /**
  * DELETE /api/auth/me
- * Delete the authenticated user and all sessions (CSRF required).
+ * Delete the authenticated user and all sessions (Auth + CSRF).
  */
 exports.deleteUser = async (req, res, next) => {
   try {
+    const userId = assertAuthedUserId(req);
+
     await authService.deleteUserAndSessions({
-      userId: Number(req.user.id),
-      requesterId: Number(req.user.id),
+      userId,
+      requesterId: userId,
     });
 
-    // Clearing cookie ensures the browser is logged out immediately.
-    res.clearCookie("sessionId", getSessionClearOptions());
-
+    clearSessionCookie(res);
     return res.status(204).send();
   } catch (err) {
-    // Translate known service errors into stable HTTP responses.
-    if (err.status === 404) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    if (err.status === 403) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
     return next(err);
   }
 };

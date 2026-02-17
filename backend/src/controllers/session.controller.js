@@ -4,37 +4,32 @@
  * Session Controller
  *
  * Responsibilities:
- * - Handle HTTP request/response concerns only
+ * - HTTP request/response concerns only
  * - Return current session context
- * - Delegate session invalidation to SessionService
+ * - Delegate invalidation to SessionsService
  *
  * Assumptions:
  * - requireAuth populates req.user and req.session
- * - session identity is carried by the sessionId cookie
  */
 
 const sessionService = require("../services/sessions.service.js");
-
-/**
- * Cookie options used when clearing the session cookie.
- * Keep aligned with options used when setting the cookie (at least path).
- */
-function getSessionClearOptions() {
-  return { path: "/" };
-}
+const { clearSessionCookie } = require("../utils/sessionCookie.js");
 
 /**
  * GET /api/sessions/current
  * Return minimal authenticated session context.
  */
-exports.current = async (req, res) => {
-  // requireAuth guarantees req.user and req.session exist.
-  return res.status(200).json({
-    user: req.user,
-    session: {
-      expiresAt: new Date(req.session.expiresAt).toISOString(),
-    },
-  });
+exports.current = async (req, res, next) => {
+  try {
+    return res.status(200).json({
+      user: req.user,
+      session: {
+        expiresAt: new Date(req.session.expiresAt).toISOString(),
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
 };
 
 /**
@@ -43,15 +38,13 @@ exports.current = async (req, res) => {
  */
 exports.destroyCurrent = async (req, res, next) => {
   try {
-    // If a cookie exists, invalidate that token in storage.
-    const sessionToken = req.cookies?.sessionId;
-    if (sessionToken) {
+    const sessionToken = req.session?.sessionToken;
+
+    if (typeof sessionToken === "string" && sessionToken.length) {
       await sessionService.invalidateSession({ sessionToken });
     }
 
-    // Always clear the browser cookie at the HTTP layer.
-    res.clearCookie("sessionId", getSessionClearOptions());
-
+    clearSessionCookie(res);
     return res.status(200).json({ success: true });
   } catch (err) {
     return next(err);
@@ -64,14 +57,11 @@ exports.destroyCurrent = async (req, res, next) => {
  */
 exports.destroyAll = async (req, res, next) => {
   try {
-    // Service enforces user scoping and invalidation policy.
     await sessionService.invalidateAllSessionsForUser({
       beekeeperId: Number(req.user.id),
     });
 
-    // Clear the current browser cookie as well.
-    res.clearCookie("sessionId", getSessionClearOptions());
-
+    clearSessionCookie(res);
     return res.status(200).json({ success: true });
   } catch (err) {
     return next(err);

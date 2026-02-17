@@ -16,12 +16,17 @@ router.get("/current", requireAuth, sessionController.current);
  * DELETE /api/sessions/current
  * Invalidate only the current session (log out this device). (Auth)
  */
-router.delete("/current", requireAuth, sessionController.destroyCurrent);
+router.delete(
+  "/current",
+  requireAuth,
+  requireCsrf,
+  sessionController.destroyCurrent,
+);
 
 /**
  * DELETE /api/sessions
  * Invalidate all sessions for the authenticated user. (Auth)
  */
-router.delete("/", requireAuth, sessionController.destroyAll);
+router.delete("/", requireAuth, requireCsrf, sessionController.destroyAll);
 
 module.exports = router;
