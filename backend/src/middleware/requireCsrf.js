@@ -18,15 +18,25 @@
  * - 403 if the CSRF token is missing or does not match
  */
 
+const crypto = require("crypto");
+
 exports.requireCsrf = (req, res, next) => {
-  // CSRF checks only make sense for an authenticated session.
   if (!req.session) {
     return res.status(401).json({ error: "Authentication required" });
   }
 
-  // Client must send the CSRF token in a header on state-changing requests.
-  const token = req.get("x-csrf-token");
-  if (!token || token !== req.session.csrfToken) {
+  const headerToken = req.get("x-csrf-token");
+  const sessionToken = req.session.csrfToken;
+
+  if (typeof headerToken !== "string" || typeof sessionToken !== "string") {
+    return res.status(403).json({ error: "Invalid CSRF token" });
+  }
+
+  // Optional constant-time compare (only safe when lengths match)
+  if (
+    headerToken.length !== sessionToken.length ||
+    !crypto.timingSafeEqual(Buffer.from(headerToken), Buffer.from(sessionToken))
+  ) {
     return res.status(403).json({ error: "Invalid CSRF token" });
   }
 
