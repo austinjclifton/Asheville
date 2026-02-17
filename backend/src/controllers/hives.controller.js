@@ -4,17 +4,16 @@
  * Hives Controller
  *
  * Responsibilities:
- * - Validate HTTP input
- * - Call service layer
- * - Return correct HTTP codes
+ * - Validate HTTP inputs
+ * - Delegate to service layer
+ * - Translate outcomes into HTTP responses
  */
 
 const hiveService = require("../services/hives.service.js");
 
-/* -------------------------------------------------------------------------- */
-/* Helpers                                                                     */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * Parse a required positive integer (path/query ids).
+ */
 function parsePositiveInt(value, field) {
   const n = Number(value);
   if (!Number.isInteger(n) || n <= 0) {
@@ -23,6 +22,11 @@ function parsePositiveInt(value, field) {
   return { ok: true, value: n };
 }
 
+/**
+ * Parse an optional string for PATCH semantics.
+ * - undefined => not provided
+ * - rejects null, non-string, empty string
+ */
 function parseOptionalString(value, field, { maxLen } = {}) {
   if (value === undefined) return { ok: true, value: undefined };
   if (value === null) return { ok: false, error: `${field} cannot be null` };
@@ -43,11 +47,14 @@ function parseOptionalString(value, field, { maxLen } = {}) {
   return { ok: true, value: trimmed };
 }
 
+/**
+ * Parse optional text field that supports explicit clearing.
+ * - undefined => not provided (PATCH semantics)
+ * - null => explicitly clear
+ * - string => stored (trimmed)
+ */
 function parseOptionalTextNullable(value, field, { maxLen } = {}) {
-  // undefined => not provided (PATCH semantics)
   if (value === undefined) return { ok: true, value: undefined };
-
-  // null => explicitly clear
   if (value === null) return { ok: true, value: null };
 
   if (typeof value !== "string") {
@@ -56,8 +63,6 @@ function parseOptionalTextNullable(value, field, { maxLen } = {}) {
 
   const trimmed = value.trim();
 
-  // allow empty string? I recommend: treat "" as empty notes (store "")
-  // but most APIs prefer trimming to "" => null. We'll keep explicit:
   if (maxLen && trimmed.length > maxLen) {
     return { ok: false, error: `${field} must be at most ${maxLen} chars` };
   }
@@ -65,24 +70,31 @@ function parseOptionalTextNullable(value, field, { maxLen } = {}) {
   return { ok: true, value: trimmed };
 }
 
+/**
+ * Extract authenticated beekeeper id from requireAuth context.
+ */
 function beekeeperIdFromReq(req) {
   return Number(req.user.id);
 }
 
-/* -------------------------------------------------------------------------- */
-/* POST /api/hives                                                             */
-/* Body: { name, notes? }                                                      */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * POST /api/hives
+ * Create a hive for the authenticated beekeeper.
+ */
 exports.create = async (req, res, next) => {
   try {
     const { name, notes } = req.body ?? {};
 
+    // Name is required for create (not PATCH semantics).
     const nameParsed = parseOptionalString(name, "name", { maxLen: 100 });
-    if (!nameParsed.ok || nameParsed.value === undefined) {
-      return res.status(400).json({ error: nameParsed.ok ? "name is required" : nameParsed.error });
+    if (!nameParsed.ok) {
+      return res.status(400).json({ error: nameParsed.error });
+    }
+    if (nameParsed.value === undefined) {
+      return res.status(400).json({ error: "name is required" });
     }
 
+    // Notes is optional; null clears; string stores.
     const notesParsed = parseOptionalTextNullable(notes, "notes");
     if (!notesParsed.ok) {
       return res.status(400).json({ error: notesParsed.error });
@@ -100,10 +112,10 @@ exports.create = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* GET /api/hives                                                              */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * GET /api/hives
+ * List hives for the authenticated beekeeper.
+ */
 exports.list = async (req, res, next) => {
   try {
     const hives = await hiveService.listHives({
@@ -116,10 +128,10 @@ exports.list = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* GET /api/hives/:id                                                          */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * GET /api/hives/:id
+ * Get a single hive by id (scoped to authenticated beekeeper).
+ */
 exports.getById = async (req, res, next) => {
   try {
     const idParsed = parsePositiveInt(req.params.id, "id");
@@ -142,11 +154,10 @@ exports.getById = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* PATCH /api/hives/:id                                                        */
-/* Body: { name?, notes? }                                                     */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * PATCH /api/hives/:id
+ * Patch hive fields (name and/or notes).
+ */
 exports.update = async (req, res, next) => {
   try {
     const idParsed = parsePositiveInt(req.params.id, "id");
@@ -156,6 +167,7 @@ exports.update = async (req, res, next) => {
 
     const { name, notes } = req.body ?? {};
 
+    // Optional fields follow PATCH semantics.
     const nameParsed = parseOptionalString(name, "name", { maxLen: 100 });
     if (!nameParsed.ok) {
       return res.status(400).json({ error: nameParsed.error });
@@ -166,8 +178,11 @@ exports.update = async (req, res, next) => {
       return res.status(400).json({ error: notesParsed.error });
     }
 
+    // Require at least one provided field for a patch.
     if (nameParsed.value === undefined && notesParsed.value === undefined) {
-      return res.status(400).json({ error: "Provide at least one field to update" });
+      return res
+        .status(400)
+        .json({ error: "Provide at least one field to update" });
     }
 
     const hive = await hiveService.updateHive({
@@ -187,10 +202,10 @@ exports.update = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* DELETE /api/hives/:id                                                       */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * DELETE /api/hives/:id
+ * Delete a hive (scoped to authenticated beekeeper).
+ */
 exports.remove = async (req, res, next) => {
   try {
     const idParsed = parsePositiveInt(req.params.id, "id");

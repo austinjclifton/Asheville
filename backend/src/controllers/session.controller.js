@@ -4,42 +4,31 @@
  * Session Controller
  *
  * Responsibilities:
- * - HTTP concerns only (Express req/res semantics)
- * - Expose current session context (minimal)
- * - Invalidate one or more sessions via SessionService
+ * - Handle HTTP request/response concerns only
+ * - Return current session context
+ * - Delegate session invalidation to SessionService
  *
- * Notes:
- * - Authentication context is provided by requireAuth middleware
- * - Session identity is derived from the session cookie
- * - Cookie management happens exclusively at the HTTP layer
+ * Assumptions:
+ * - requireAuth populates req.user and req.session
+ * - session identity is carried by the sessionId cookie
  */
 
 const sessionService = require("../services/sessions.service.js");
 
-/* -------------------------------------------------------------------------- */
-/* Cookie helpers                                                              */
-/* -------------------------------------------------------------------------- */
-
 /**
- * Cookie options used when CLEARING the session cookie.
- * Must match the cookie path used when setting the cookie.
+ * Cookie options used when clearing the session cookie.
+ * Keep aligned with options used when setting the cookie (at least path).
  */
 function getSessionClearOptions() {
-  return {
-    path: "/",
-  };
+  return { path: "/" };
 }
-
-/* -------------------------------------------------------------------------- */
-/* Current                                                                     */
-/* -------------------------------------------------------------------------- */
 
 /**
  * GET /api/sessions/current
- *
- * Returns minimal authenticated session context.
+ * Return minimal authenticated session context.
  */
 exports.current = async (req, res) => {
+  // requireAuth guarantees req.user and req.session exist.
   return res.status(200).json({
     user: req.user,
     session: {
@@ -48,24 +37,19 @@ exports.current = async (req, res) => {
   });
 };
 
-/* -------------------------------------------------------------------------- */
-/* Destroy Current                                                             */
-/* -------------------------------------------------------------------------- */
-
 /**
  * DELETE /api/sessions/current
- *
- * Invalidates the current session only.
- * Equivalent to logging out from this device.
+ * Invalidate only the current session (log out this device).
  */
 exports.destroyCurrent = async (req, res, next) => {
   try {
+    // If a cookie exists, invalidate that token in storage.
     const sessionToken = req.cookies?.sessionId;
-
     if (sessionToken) {
       await sessionService.invalidateSession({ sessionToken });
     }
 
+    // Always clear the browser cookie at the HTTP layer.
     res.clearCookie("sessionId", getSessionClearOptions());
 
     return res.status(200).json({ success: true });
@@ -74,22 +58,18 @@ exports.destroyCurrent = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* Destroy All                                                                 */
-/* -------------------------------------------------------------------------- */
-
 /**
  * DELETE /api/sessions
- *
- * Invalidates all sessions for the authenticated user.
- * Useful for "log out of all devices".
+ * Invalidate all sessions for the authenticated user (log out everywhere).
  */
 exports.destroyAll = async (req, res, next) => {
   try {
+    // Service enforces user scoping and invalidation policy.
     await sessionService.invalidateAllSessionsForUser({
       beekeeperId: Number(req.user.id),
     });
 
+    // Clear the current browser cookie as well.
     res.clearCookie("sessionId", getSessionClearOptions());
 
     return res.status(200).json({ success: true });

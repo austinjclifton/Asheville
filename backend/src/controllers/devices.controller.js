@@ -4,17 +4,16 @@
  * Devices Controller
  *
  * Responsibilities:
- * - Validate HTTP input
- * - Call service layer
- * - Return correct HTTP codes
+ * - Validate HTTP inputs
+ * - Delegate to service layer
+ * - Translate outcomes into HTTP responses
  */
 
 const deviceService = require("../services/devices.service.js");
 
-/* -------------------------------------------------------------------------- */
-/* Helpers                                                                     */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * Parse a required positive integer (path/query/body ids).
+ */
 function parsePositiveInt(value, field) {
   const n = Number(value);
   if (!Number.isInteger(n) || n <= 0) {
@@ -23,6 +22,12 @@ function parsePositiveInt(value, field) {
   return { ok: true, value: n };
 }
 
+/**
+ * Parse an optional ISO8601 timestamp.
+ * - undefined => not provided
+ * - null => explicit null (allowed for nullable fields)
+ * - valid string/date => normalized to ISO string
+ */
 function parseOptionalDate(value, field) {
   if (value === undefined) return { ok: true, value: undefined };
   if (value === null) return { ok: true, value: null };
@@ -35,68 +40,31 @@ function parseOptionalDate(value, field) {
   return { ok: true, value: d.toISOString() };
 }
 
+/**
+ * Extract authenticated beekeeper id from requireAuth context.
+ */
 function beekeeperIdFromReq(req) {
   return Number(req.user.id);
 }
 
+/**
+ * If a service throws an Error with a numeric status, respond consistently here.
+ * Returns the response if handled, otherwise null so caller can next(err).
+ */
 function handleServiceError(res, err) {
-  // If service sets err.status, respond consistently here.
   if (err && Number.isInteger(err.status)) {
     return res.status(err.status).json({ error: err.message });
   }
   return null;
 }
 
-/* -------------------------------------------------------------------------- */
-/* POST /api/devices                                                           */
-/* Body: { hiveId, installedAt? }                                              */
-/* -------------------------------------------------------------------------- */
-
-exports.create = async (req, res, next) => {
+/**
+ * Shared create implementation used by both create routes.
+ */
+async function createDeviceForHive(req, res, next, hiveId) {
   try {
-    const { hiveId, installedAt } = req.body ?? {};
-
-    const hiveParsed = parsePositiveInt(hiveId, "hiveId");
-    if (!hiveParsed.ok) {
-      return res.status(400).json({ error: hiveParsed.error });
-    }
-
-    const installedParsed = parseOptionalDate(installedAt, "installedAt");
-    if (!installedParsed.ok) {
-      return res.status(400).json({ error: installedParsed.error });
-    }
-
-    const device = await deviceService.createDevice({
-      beekeeperId: beekeeperIdFromReq(req),
-      hiveId: hiveParsed.value,
-      installedAt: installedParsed.value ?? null,
-    });
-
-    if (!device) {
-      return res.status(404).json({ error: "Hive not found" });
-    }
-
-    return res.status(201).json({ device });
-  } catch (err) {
-    const handled = handleServiceError(res, err);
-    if (handled) return handled;
-    return next(err);
-  }
-};
-
-/* -------------------------------------------------------------------------- */
-/* POST /api/hives/:hiveId/devices                                             */
-/* Body: { installedAt? }                                                     */
-/* -------------------------------------------------------------------------- */
-
-exports.createForHive = async (req, res, next) => {
-  try {
-    const hiveParsed = parsePositiveInt(req.params.hiveId, "hiveId");
-    if (!hiveParsed.ok) {
-      return res.status(400).json({ error: hiveParsed.error });
-    }
-
     const { installedAt } = req.body ?? {};
+
     const installedParsed = parseOptionalDate(installedAt, "installedAt");
     if (!installedParsed.ok) {
       return res.status(400).json({ error: installedParsed.error });
@@ -104,7 +72,7 @@ exports.createForHive = async (req, res, next) => {
 
     const device = await deviceService.createDevice({
       beekeeperId: beekeeperIdFromReq(req),
-      hiveId: hiveParsed.value,
+      hiveId,
       installedAt: installedParsed.value ?? null,
     });
 
@@ -118,12 +86,40 @@ exports.createForHive = async (req, res, next) => {
     if (handled) return handled;
     return next(err);
   }
+}
+
+/**
+ * POST /api/devices
+ * Create a device for a hive (hiveId is provided in the body).
+ */
+exports.create = async (req, res, next) => {
+  const { hiveId } = req.body ?? {};
+
+  const hiveParsed = parsePositiveInt(hiveId, "hiveId");
+  if (!hiveParsed.ok) {
+    return res.status(400).json({ error: hiveParsed.error });
+  }
+
+  return createDeviceForHive(req, res, next, hiveParsed.value);
 };
 
-/* -------------------------------------------------------------------------- */
-/* GET /api/devices                                                            */
-/* -------------------------------------------------------------------------- */
+/**
+ * POST /api/hives/:hiveId/devices
+ * Create a device under a specific hive (hiveId comes from the path).
+ */
+exports.createForHive = async (req, res, next) => {
+  const hiveParsed = parsePositiveInt(req.params.hiveId, "hiveId");
+  if (!hiveParsed.ok) {
+    return res.status(400).json({ error: hiveParsed.error });
+  }
 
+  return createDeviceForHive(req, res, next, hiveParsed.value);
+};
+
+/**
+ * GET /api/devices
+ * List all devices for the authenticated beekeeper.
+ */
 exports.list = async (req, res, next) => {
   try {
     const devices = await deviceService.listDevices({
@@ -138,10 +134,10 @@ exports.list = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* GET /api/hives/:hiveId/devices                                              */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * GET /api/hives/:hiveId/devices
+ * List devices under a specific hive (scoped).
+ */
 exports.listForHive = async (req, res, next) => {
   try {
     const hiveParsed = parsePositiveInt(req.params.hiveId, "hiveId");
@@ -166,10 +162,10 @@ exports.listForHive = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* GET /api/devices/:id                                                        */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * GET /api/devices/:id
+ * Get a single device by id (scoped).
+ */
 exports.getById = async (req, res, next) => {
   try {
     const parsed = parsePositiveInt(req.params.id, "id");
@@ -194,11 +190,10 @@ exports.getById = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* POST /api/devices/:id/last-seen                                             */
-/* Body: { seenAt? }                                                          */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * POST /api/devices/:id/last-seen
+ * Update last-seen timestamp for a device (scoped).
+ */
 exports.touchLastSeen = async (req, res, next) => {
   try {
     const parsed = parsePositiveInt(req.params.id, "id");
@@ -215,7 +210,7 @@ exports.touchLastSeen = async (req, res, next) => {
     const device = await deviceService.touchLastSeen({
       beekeeperId: beekeeperIdFromReq(req),
       deviceId: parsed.value,
-      seenAt: seenParsed.value, // undefined => repo uses now()
+      seenAt: seenParsed.value, // undefined => service/repo can default to now()
     });
 
     if (!device) {
@@ -224,17 +219,16 @@ exports.touchLastSeen = async (req, res, next) => {
 
     return res.status(200).json({ device });
   } catch (err) {
-    // If you added handleServiceError earlier, use it here too.
-    // const handled = handleServiceError(res, err);
-    // if (handled) return handled;
+    const handled = handleServiceError(res, err);
+    if (handled) return handled;
     return next(err);
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* DELETE /api/devices/:id                                                     */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * DELETE /api/devices/:id
+ * Delete a device (scoped).
+ */
 exports.remove = async (req, res, next) => {
   try {
     const parsed = parsePositiveInt(req.params.id, "id");

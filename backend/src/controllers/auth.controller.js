@@ -1,61 +1,27 @@
-/* -------------------------------------------------------------------------- */
-/* Delete User                                                                */
-/* -------------------------------------------------------------------------- */
-
-/**
- * DELETE /api/auth/me
- *
- * Deletes the authenticated user's account and all sessions.
- * Requires authentication.
- */
-exports.deleteUser = async (req, res, next) => {
-  try {
-    await authService.deleteUserAndSessions({
-      userId: Number(req.user.id),
-      requesterId: Number(req.user.id),
-    });
-
-    res.clearCookie("sessionId", getSessionClearOptions());
-    return res.status(204).send();
-  } catch (err) {
-    if (err.status === 404) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    if (err.status === 403) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    return next(err);
-  }
-};
-("use strict");
+"use strict";
 
 /**
  * Auth Controller
  *
  * Responsibilities:
- * - Handle HTTP concerns only (Express req/res semantics)
- * - Validate incoming request shapes
- * - Delegate all business logic to services
- * - Translate service results/errors into HTTP responses
- * - Set and clear authentication cookies
+ * - HTTP concerns only (Express req/res)
+ * - Validate request inputs at the boundary
+ * - Delegate business logic to services
+ * - Translate service outcomes into HTTP responses
  *
- * CSRF model:
- * - CSRF token REQUIRED for logout and authenticated state changes
- * - CSRF token returned at login and via /csrf
- * - Session token stored exclusively as HttpOnly cookie
+ * Security model:
+ * - Session token is stored in HttpOnly `sessionId` cookie
+ * - CSRF token is required for authenticated state-changing routes
+ * - requireAuth populates req.user + req.session for authenticated routes
  */
 
 const authService = require("../services/auth.service.js");
 const sessionService = require("../services/sessions.service.js");
 const passwordResetService = require("../services/passwordReset.service.js");
 
-/* -------------------------------------------------------------------------- */
-/* Cookie helpers                                                              */
-/* -------------------------------------------------------------------------- */
-
 /**
- * Cookie options used when SETTING the session cookie.
- * Session lifetime is owned by the session service.
+ * Cookie options used when setting the session cookie.
+ * Keep aligned with deployment expectations (secure in production).
  */
 function getSessionCookieOptions() {
   return {
@@ -68,12 +34,11 @@ function getSessionCookieOptions() {
 }
 
 /**
- * Cookie options used when CLEARING the session cookie.
+ * Cookie options used when clearing the session cookie.
+ * Must match the cookie path used when setting the cookie.
  */
 function getSessionClearOptions() {
-  return {
-    path: "/",
-  };
+  return { path: "/" };
 }
 
 /**
@@ -83,19 +48,15 @@ function safeBody(req) {
   return req.body ?? {};
 }
 
-/* -------------------------------------------------------------------------- */
-/* Register                                                                    */
-/* -------------------------------------------------------------------------- */
-
 /**
  * POST /api/auth/register
- *
- * Creates a new user and an initial authenticated session.
+ * Create a new user and an initial authenticated session.
  */
 exports.register = async (req, res, next) => {
   try {
     const { username, email, password } = safeBody(req);
 
+    // Basic shape validation at the HTTP boundary.
     if (!username || !email || !password) {
       return res.status(400).json({
         error: "username, email, and password are required",
@@ -109,6 +70,7 @@ exports.register = async (req, res, next) => {
       context: req.context,
     });
 
+    // Persist session via HttpOnly cookie; return CSRF token in JSON.
     res.cookie(
       "sessionId",
       result.session.sessionToken,
@@ -124,19 +86,15 @@ exports.register = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* Login                                                                       */
-/* -------------------------------------------------------------------------- */
-
 /**
  * POST /api/auth/login
- *
- * Authenticates a user and creates a new session.
+ * Authenticate a user and create a new session.
  */
 exports.login = async (req, res, next) => {
   try {
     const { identifier, password } = safeBody(req);
 
+    // Basic shape validation at the HTTP boundary.
     if (!identifier || !password) {
       return res.status(400).json({
         error: "identifier and password are required",
@@ -149,6 +107,7 @@ exports.login = async (req, res, next) => {
       context: req.context,
     });
 
+    // Persist session via HttpOnly cookie; return CSRF token in JSON.
     res.cookie(
       "sessionId",
       result.session.sessionToken,
@@ -164,26 +123,22 @@ exports.login = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* Logout                                                                      */
-/* -------------------------------------------------------------------------- */
-
 /**
  * POST /api/auth/logout
- *
- * Invalidates the current authenticated session.
- * CSRF token REQUIRED.
+ * Invalidate the current session (CSRF required).
  */
 exports.logout = async (req, res, next) => {
   try {
     const sessionToken = req.cookies?.sessionId;
 
+    // If the cookie is missing, treat as already logged out.
     if (!sessionToken) {
       return res.status(200).json({ success: true });
     }
 
     await sessionService.invalidateSession({ sessionToken });
 
+    // Clear cookie regardless of invalidate outcome (best-effort logout).
     res.clearCookie("sessionId", getSessionClearOptions());
 
     return res.status(200).json({ success: true });
@@ -192,20 +147,15 @@ exports.logout = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* Change Password                                                             */
-/* -------------------------------------------------------------------------- */
-
 /**
  * POST /api/auth/change-password
- *
- * Changes the authenticated user's password.
- * CSRF token REQUIRED.
+ * Change the authenticated user's password (CSRF required).
  */
 exports.changePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = safeBody(req);
 
+    // Basic shape validation at the HTTP boundary.
     if (!currentPassword || !newPassword) {
       return res.status(400).json({
         error: "currentPassword and newPassword are required",
@@ -224,27 +174,21 @@ exports.changePassword = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* Password Reset (Unauthenticated)                                            */
-/* -------------------------------------------------------------------------- */
-
 /**
  * POST /api/auth/reset-password/request
- *
- * Initiates a password reset flow.
- * Always returns success to prevent account enumeration.
+ * Start a password reset flow (always returns success to prevent enumeration).
  */
 exports.requestPasswordReset = async (req, res, next) => {
   try {
     const { email } = safeBody(req);
 
+    // Require an email shape, but do not reveal whether it exists.
     if (!email) {
       return res.status(400).json({ error: "email is required" });
     }
 
     await passwordResetService.requestResetForEmail({ email });
 
-    // Always succeed (no enumeration)
     return res.status(200).json({ success: true });
   } catch (err) {
     return next(err);
@@ -253,20 +197,20 @@ exports.requestPasswordReset = async (req, res, next) => {
 
 /**
  * POST /api/auth/reset-password/confirm
- *
- * Completes a password reset using a one-time reset token.
+ * Complete a password reset using a one-time reset token.
  */
 exports.confirmPasswordReset = async (req, res, next) => {
   try {
     const { token, newPassword } = safeBody(req);
 
+    // Basic shape validation at the HTTP boundary.
     if (!token || !newPassword) {
       return res.status(400).json({
         error: "token and newPassword are required",
       });
     }
 
-    // 1️⃣ Verify token but DO NOT consume it
+    // Verify token first (do not consume until reset succeeds).
     const verification = await passwordResetService.verifyResetToken({
       rawToken: token,
     });
@@ -277,13 +221,12 @@ exports.confirmPasswordReset = async (req, res, next) => {
       });
     }
 
-    // 2️⃣ Attempt password reset (can fail safely)
+    // Reset password, then consume token only after success.
     await authService.resetPassword({
       userId: Number(verification.userId),
       newPassword,
     });
 
-    // 3️⃣ Consume token ONLY after success
     await passwordResetService.consumeResetTokenForUser({
       userId: verification.userId,
     });
@@ -294,32 +237,45 @@ exports.confirmPasswordReset = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* CSRF                                                                        */
-/* -------------------------------------------------------------------------- */
-
 /**
  * GET /api/auth/csrf
- *
- * Returns the CSRF token for the current authenticated session.
+ * Return the CSRF token for the current session.
  */
 exports.csrf = async (req, res) => {
-  return res.status(200).json({
-    csrfToken: req.session.csrfToken,
-  });
+  return res.status(200).json({ csrfToken: req.session.csrfToken });
 };
-
-/* -------------------------------------------------------------------------- */
-/* Me                                                                          */
-/* -------------------------------------------------------------------------- */
 
 /**
  * GET /api/auth/me
- *
- * Returns the authenticated user's public profile.
+ * Return the authenticated user's public profile.
  */
 exports.me = async (req, res) => {
-  return res.status(200).json({
-    user: req.user,
-  });
+  return res.status(200).json({ user: req.user });
+};
+
+/**
+ * DELETE /api/auth/me
+ * Delete the authenticated user and all sessions (CSRF required).
+ */
+exports.deleteUser = async (req, res, next) => {
+  try {
+    await authService.deleteUserAndSessions({
+      userId: Number(req.user.id),
+      requesterId: Number(req.user.id),
+    });
+
+    // Clearing cookie ensures the browser is logged out immediately.
+    res.clearCookie("sessionId", getSessionClearOptions());
+
+    return res.status(204).send();
+  } catch (err) {
+    // Translate known service errors into stable HTTP responses.
+    if (err.status === 404) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    if (err.status === 403) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    return next(err);
+  }
 };

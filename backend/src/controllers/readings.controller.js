@@ -17,10 +17,9 @@
 
 const readingService = require("../services/readings.service.js");
 
-/* -------------------------------------------------------------------------- */
-/* Utilities                                                                  */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * Create and throw a 400 validation error for missing/invalid request inputs.
+ */
 function badRequest(message) {
   const err = new Error(message);
   err.status = 400;
@@ -28,40 +27,37 @@ function badRequest(message) {
   throw err;
 }
 
+/**
+ * Require a query param to be present and non-empty.
+ */
 function requireQuery(req, name) {
-  const v = req.query?.[name];
-  if (v === undefined || v === null || v === "") {
+  const value = req.query?.[name];
+  if (value === undefined || value === null || value === "") {
     badRequest(`${name} is required`);
   }
-  return v;
+  return value;
 }
 
+/**
+ * Extract authenticated beekeeper id from requireAuth context.
+ */
 function getBeekeeperId(req) {
   const n = Number(req.user?.id);
-  if (!Number.isInteger(n) || n <= 0) badRequest("Invalid beekeeperId");
+  if (!Number.isInteger(n) || n <= 0) {
+    badRequest("Invalid beekeeperId");
+  }
   return n;
 }
 
-/* -------------------------------------------------------------------------- */
-/* GET /api/readings/since                                                    */
-/* -------------------------------------------------------------------------- */
 /**
- * Returns readings for a hive since a given timestamp (optional until).
- *
- * Query Params:
- * - hiveId (required) -> positive integer
- * - since (required)  -> ISO date/time string
- * - until (optional)  -> ISO date/time string (exclusive upper bound)
- * - limit (optional)  -> positive int (service caps max)
- * - order (optional)  -> asc | desc
- *
- * Response:
- * - 200 { readings: [...] }
+ * GET /api/readings/since
+ * Return readings for a hive since an ISO timestamp (optional until/limit/order).
  */
 exports.since = async (req, res, next) => {
   try {
     const beekeeperId = getBeekeeperId(req);
 
+    // Required query params: presence checks only (service validates/normalizes).
     const hiveId = requireQuery(req, "hiveId");
     const since = requireQuery(req, "since");
 
@@ -85,22 +81,15 @@ exports.since = async (req, res, next) => {
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/* GET /api/readings/latest                                                   */
-/* -------------------------------------------------------------------------- */
 /**
- * Returns the most recent reading for a hive.
- *
- * Query Params:
- * - hiveId (required) -> positive integer
- *
- * Response:
- * - 200 { reading: {...} }
- * - 404 { error: "No readings found for hive" }
+ * GET /api/readings/latest
+ * Return the most recent reading for a hive.
  */
 exports.latest = async (req, res, next) => {
   try {
     const beekeeperId = getBeekeeperId(req);
+
+    // Required query param: presence check only (service validates/normalizes).
     const hiveId = requireQuery(req, "hiveId");
 
     const reading = await readingService.getLatestForHive({
@@ -109,9 +98,7 @@ exports.latest = async (req, res, next) => {
     });
 
     if (!reading) {
-      return res.status(404).json({
-        error: "No readings found for hive",
-      });
+      return res.status(404).json({ error: "No readings found for hive" });
     }
 
     return res.status(200).json({ reading });
