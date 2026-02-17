@@ -39,6 +39,14 @@ function beekeeperIdFromReq(req) {
   return Number(req.user.id);
 }
 
+function handleServiceError(res, err) {
+  // If service sets err.status, respond consistently here.
+  if (err && Number.isInteger(err.status)) {
+    return res.status(err.status).json({ error: err.message });
+  }
+  return null;
+}
+
 /* -------------------------------------------------------------------------- */
 /* POST /api/devices                                                           */
 /* Body: { hiveId, installedAt? }                                              */
@@ -64,13 +72,14 @@ exports.create = async (req, res, next) => {
       installedAt: installedParsed.value ?? null,
     });
 
-    // Service should return null when hive not found/not owned
     if (!device) {
       return res.status(404).json({ error: "Hive not found" });
     }
 
     return res.status(201).json({ device });
   } catch (err) {
+    const handled = handleServiceError(res, err);
+    if (handled) return handled;
     return next(err);
   }
 };
@@ -105,6 +114,8 @@ exports.createForHive = async (req, res, next) => {
 
     return res.status(201).json({ device });
   } catch (err) {
+    const handled = handleServiceError(res, err);
+    if (handled) return handled;
     return next(err);
   }
 };
@@ -121,6 +132,8 @@ exports.list = async (req, res, next) => {
 
     return res.status(200).json({ devices });
   } catch (err) {
+    const handled = handleServiceError(res, err);
+    if (handled) return handled;
     return next(err);
   }
 };
@@ -141,14 +154,14 @@ exports.listForHive = async (req, res, next) => {
       hiveId: hiveParsed.value,
     });
 
-    // You can choose whether “hive not found” should be 404 vs empty [].
-    // I recommend 404 so clients can distinguish between "no devices" and "bad hive".
     if (devices === null) {
       return res.status(404).json({ error: "Hive not found" });
     }
 
     return res.status(200).json({ devices });
   } catch (err) {
+    const handled = handleServiceError(res, err);
+    if (handled) return handled;
     return next(err);
   }
 };
@@ -175,48 +188,34 @@ exports.getById = async (req, res, next) => {
 
     return res.status(200).json({ device });
   } catch (err) {
+    const handled = handleServiceError(res, err);
+    if (handled) return handled;
     return next(err);
   }
 };
 
 /* -------------------------------------------------------------------------- */
-/* PATCH /api/devices/:id                                                      */
-/* Body: { installedAt?, lastSeenAt? }                                        */
+/* POST /api/devices/:id/last-seen                                             */
+/* Body: { seenAt? }                                                          */
 /* -------------------------------------------------------------------------- */
 
-exports.update = async (req, res, next) => {
+exports.touchLastSeen = async (req, res, next) => {
   try {
-    const idParsed = parsePositiveInt(req.params.id, "id");
-    if (!idParsed.ok) {
-      return res.status(400).json({ error: idParsed.error });
+    const parsed = parsePositiveInt(req.params.id, "id");
+    if (!parsed.ok) {
+      return res.status(400).json({ error: parsed.error });
     }
 
-    const { installedAt, lastSeenAt } = req.body ?? {};
-
-    const installedParsed = parseOptionalDate(installedAt, "installedAt");
-    if (!installedParsed.ok) {
-      return res.status(400).json({ error: installedParsed.error });
+    const { seenAt } = req.body ?? {};
+    const seenParsed = parseOptionalDate(seenAt, "seenAt");
+    if (!seenParsed.ok) {
+      return res.status(400).json({ error: seenParsed.error });
     }
 
-    const lastSeenParsed = parseOptionalDate(lastSeenAt, "lastSeenAt");
-    if (!lastSeenParsed.ok) {
-      return res.status(400).json({ error: lastSeenParsed.error });
-    }
-
-    if (
-      installedParsed.value === undefined &&
-      lastSeenParsed.value === undefined
-    ) {
-      return res.status(400).json({
-        error: "Provide at least one field to update",
-      });
-    }
-
-    const device = await deviceService.updateDevice({
+    const device = await deviceService.touchLastSeen({
       beekeeperId: beekeeperIdFromReq(req),
-      deviceId: idParsed.value,
-      installedAt: installedParsed.value,
-      lastSeenAt: lastSeenParsed.value,
+      deviceId: parsed.value,
+      seenAt: seenParsed.value, // undefined => repo uses now()
     });
 
     if (!device) {
@@ -225,6 +224,9 @@ exports.update = async (req, res, next) => {
 
     return res.status(200).json({ device });
   } catch (err) {
+    // If you added handleServiceError earlier, use it here too.
+    // const handled = handleServiceError(res, err);
+    // if (handled) return handled;
     return next(err);
   }
 };
@@ -251,6 +253,8 @@ exports.remove = async (req, res, next) => {
 
     return res.status(204).send();
   } catch (err) {
+    const handled = handleServiceError(res, err);
+    if (handled) return handled;
     return next(err);
   }
 };

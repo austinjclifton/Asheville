@@ -1,30 +1,34 @@
 "use strict";
 
 /**
- * Devices Service
+ * device service
  *
- * Responsibilities:
- * - Enforce domain invariants (inputs, patch semantics)
- * - Coordinate repositories
- * - Remain HTTP-agnostic (no req/res)
- *
- * Notes:
- * - Ownership is enforced in the repository via device → hive → beekeeper join.
- * - For nested hive routes, listDevicesForHive returns:
- *   - device[] when hive is owned (even if empty)
- *   - null when hive is not found / not owned (controller returns 404)
+ * Function Index:
+ * - createDevice({ beekeeperId, hiveId, installedAt? }) -> device | null
+ * - listDevices({ beekeeperId }) -> device[]
+ * - listDevicesForHive({ beekeeperId, hiveId }) -> device[] | null     (null => hive not found / not owned)
+ * - getDevice({ beekeeperId, deviceId }) -> device | null
+ * - updateDevice({ beekeeperId, deviceId, installedAt?, lastSeenAt? }) -> device | null
+ * - touchLastSeen({ beekeeperId, deviceId, seenAt? }) -> device | null
+ * - deleteDevice({ beekeeperId, deviceId }) -> boolean
  */
 
 const deviceRepo = require("../db/devices.db.js");
 const hiveRepo = require("../db/hives.db.js");
 
 /* ========================================================================== */
-/* Validation Helpers                                                          */
+/* Errors + Validation Helpers                                                 */
 /* ========================================================================== */
 
 function badRequest(message) {
   const err = new Error(message);
   err.status = 400;
+  return err;
+}
+
+function conflict(message) {
+  const err = new Error(message);
+  err.status = 409;
   return err;
 }
 
@@ -50,6 +54,11 @@ function normalizeOptionalIso(value, field) {
   return d.toISOString();
 }
 
+function isPgUniqueViolation(err) {
+  // node-postgres uses err.code for SQLSTATE
+  return err && err.code === "23505";
+}
+
 /* ========================================================================== */
 /* Create                                                                      */
 /* ========================================================================== */
@@ -58,14 +67,32 @@ exports.createDevice = async ({ beekeeperId, hiveId, installedAt }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   assertPositiveInt(hiveId, "hiveId");
 
+  // Ensure hive exists and is owned (keeps behavior consistent with listDevicesForHive)
+  const hiveExists = await hiveRepo.existsScoped({ beekeeperId, hiveId });
+  if (!hiveExists) return null;
+
+  // 1:1 enforcement (friendly error before DB constraint)
+  // Keep compatibility with current repo shape (list returns array).
+  const existing = await deviceRepo.listByHiveScoped({ beekeeperId, hiveId });
+  if (existing && existing.length > 0) {
+    throw conflict("This hive already has a device");
+  }
+
   const installedIso = normalizeOptionalIso(installedAt ?? null, "installedAt");
 
-  // Repo returns null when hive not found / not owned.
-  return deviceRepo.createScoped({
-    beekeeperId,
-    hiveId,
-    installedAt: installedIso,
-  });
+  try {
+    return await deviceRepo.createScoped({
+      beekeeperId,
+      hiveId,
+      installedAt: installedIso,
+    });
+  } catch (err) {
+    // Race-safe: if two creates happen simultaneously, DB UNIQUE(device.hive_id) wins.
+    if (isPgUniqueViolation(err)) {
+      throw conflict("This hive already has a device");
+    }
+    throw err;
+  }
 };
 
 /* ========================================================================== */
@@ -83,6 +110,8 @@ exports.listDevices = async ({ beekeeperId }) => {
  * Returns:
  * - device[] when hive exists and is owned (may be empty)
  * - null when hive does not exist or is not owned
+ *
+ * Note: Under 1:1, array will be [] or [device].
  */
 exports.listDevicesForHive = async ({ beekeeperId, hiveId }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");

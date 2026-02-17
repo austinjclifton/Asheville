@@ -19,7 +19,7 @@ const router = express.Router();
 
 router.get("/", requireAuth, devicesController.list);       // all devices for beekeeper
 router.get("/:id", requireAuth, devicesController.getById); // single device (scoped)
-router.patch("/:id", requireAuth, devicesController.update);
+router.post("/:id/last-seen", requireAuth, devicesController.touchLastSeen);
 router.delete("/:id", requireAuth, devicesController.remove);
 
 module.exports = router;
