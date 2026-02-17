@@ -4,6 +4,7 @@ const express = require("express");
 const router = express.Router();
 
 const { requireAuth } = require("../middleware/requireAuth.js");
+const { requireCsrf } = require("../middleware/requireCsrf.js");
 const hivesController = require("../controllers/hives.controller.js");
 const devicesController = require("../controllers/devices.controller.js");
 
@@ -11,7 +12,7 @@ const devicesController = require("../controllers/devices.controller.js");
  * POST /api/hives
  * Create a hive for the authenticated beekeeper.
  */
-router.post("/", requireAuth, hivesController.create);
+router.post("/", requireAuth, requireCsrf, hivesController.create);
 
 /**
  * GET /api/hives
@@ -29,19 +30,19 @@ router.get("/:id", requireAuth, hivesController.getById);
  * PATCH /api/hives/:id
  * Patch/update hive fields (scoped).
  */
-router.patch("/:id", requireAuth, hivesController.update);
+router.patch("/:id", requireAuth, requireCsrf, hivesController.update);
 
 /**
  * DELETE /api/hives/:id
  * Delete a hive (scoped).
  */
-router.delete("/:id", requireAuth, hivesController.remove);
+router.delete("/:id", requireAuth, requireCsrf, hivesController.remove);
 
 /**
  * POST /api/hives/:hiveId/devices
  * Create a device under a hive (scoped).
  */
-router.post("/:hiveId/devices", requireAuth, devicesController.createForHive);
+router.post("/:hiveId/devices", requireAuth, requireCsrf, devicesController.createForHive);
 
 /**
  * GET /api/hives/:hiveId/devices

@@ -24,7 +24,7 @@ const readingRoutes = require("./routes/readings.routes");
 const ingestRoutes = require("./routes/ingest.routes");
 
 // ----- Swagger -----
-const { setupSwagger } = require("./swagger.js");
+const { setupSwagger } = require("./utils/swagger.js");
 
 const app = express();
 

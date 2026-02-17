@@ -13,18 +13,20 @@
 
 const hiveRepo = require("../db/hives.db.js");
 
-/**
- * Create a 400 error for invalid inputs.
- */
+/* ========================================================================== */
+/* Errors + Validation                                                         */
+/* ========================================================================== */
+
+const HIVE_NAME_MAX = 100;
+// optional: keep notes unlimited (TEXT), or enforce a sane limit
+// const HIVE_NOTES_MAX = 2000;
+
 function badRequest(message) {
   const err = new Error(message);
   err.status = 400;
   return err;
 }
 
-/**
- * Assert a value is a positive integer.
- */
 function assertPositiveInt(value, field) {
   if (!Number.isInteger(value) || value <= 0) {
     throw badRequest(`${field} must be a positive integer`);
@@ -32,7 +34,7 @@ function assertPositiveInt(value, field) {
 }
 
 /**
- * Normalize and validate required hive name.
+ * For CREATE: name required.
  */
 function normalizeRequiredName(name) {
   if (typeof name !== "string") {
@@ -44,20 +46,48 @@ function normalizeRequiredName(name) {
     throw badRequest("name is required");
   }
 
-  if (trimmed.length > 100) {
-    throw badRequest("name cannot exceed 100 characters");
+  if (trimmed.length > HIVE_NAME_MAX) {
+    throw badRequest(`name cannot exceed ${HIVE_NAME_MAX} characters`);
   }
 
   return trimmed;
 }
 
 /**
- * Normalize notes field with PATCH semantics.
+ * For PATCH: name optional.
+ * - undefined => not provided
+ * - rejects null, non-string, empty string
+ */
+function normalizeNameForPatch(name) {
+  if (name === undefined) return undefined;
+
+  if (name === null) {
+    throw badRequest("name cannot be null");
+  }
+
+  if (typeof name !== "string") {
+    throw badRequest("name must be a string");
+  }
+
+  const trimmed = name.trim();
+  if (trimmed.length === 0) {
+    throw badRequest("name cannot be empty");
+  }
+
+  if (trimmed.length > HIVE_NAME_MAX) {
+    throw badRequest(`name cannot exceed ${HIVE_NAME_MAX} characters`);
+  }
+
+  return trimmed;
+}
+
+/**
+ * Notes patch semantics:
  * - undefined => not provided
  * - null => clear
- * - string => trimmed string (may be "")
+ * - string => trimmed (may be "")
  */
-function normalizeNotes(notes) {
+function normalizeNotesForPatch(notes) {
   if (notes === undefined) return undefined;
   if (notes === null) return null;
 
@@ -65,19 +95,39 @@ function normalizeNotes(notes) {
     throw badRequest("notes must be a string or null");
   }
 
-  return notes.trim();
+  const trimmed = notes.trim();
+
+  // optional:
+  // if (trimmed.length > HIVE_NOTES_MAX) {
+  //   throw badRequest(`notes cannot exceed ${HIVE_NOTES_MAX} characters`);
+  // }
+
+  return trimmed;
 }
 
 /**
- * POST-like: Create a hive for the authenticated beekeeper.
+ * Notes create semantics:
+ * - undefined => store null
+ * - null => store null
+ * - string => trimmed
+ */
+function normalizeNotesForCreate(notes) {
+  if (notes === undefined || notes === null) return null;
+  return normalizeNotesForPatch(notes); // handles string validation/trim
+}
+
+/* ========================================================================== */
+/* Public API                                                                  */
+/* ========================================================================== */
+
+/**
+ * Create a hive for the authenticated beekeeper.
  */
 exports.createHive = async ({ beekeeperId, name, notes }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
 
   const nameNorm = normalizeRequiredName(name);
-
-  // For create: notes defaults to null when omitted.
-  const notesNorm = notes === undefined ? null : normalizeNotes(notes);
+  const notesNorm = normalizeNotesForCreate(notes);
 
   return hiveRepo.create({
     beekeeperId,
@@ -111,9 +161,8 @@ exports.updateHive = async ({ beekeeperId, hiveId, name, notes }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   assertPositiveInt(hiveId, "hiveId");
 
-  // For update: omitted fields stay undefined (PATCH semantics).
-  const nameNorm = name === undefined ? undefined : normalizeRequiredName(name);
-  const notesNorm = normalizeNotes(notes);
+  const nameNorm = normalizeNameForPatch(name);
+  const notesNorm = normalizeNotesForPatch(notes);
 
   if (nameNorm === undefined && notesNorm === undefined) {
     throw badRequest("Provide at least one field to update");

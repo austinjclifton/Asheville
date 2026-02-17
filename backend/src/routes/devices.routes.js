@@ -4,6 +4,7 @@ const express = require("express");
 const router = express.Router();
 
 const { requireAuth } = require("../middleware/requireAuth.js");
+const { requireCsrf } = require("../middleware/requireCsrf.js");
 const devicesController = require("../controllers/devices.controller.js");
 
 /**
@@ -28,6 +29,6 @@ router.post("/:id/last-seen", requireAuth, devicesController.touchLastSeen);
  * DELETE /api/devices/:id
  * Delete a device (scoped).
  */
-router.delete("/:id", requireAuth, devicesController.remove);
+router.delete("/:id", requireAuth, requireCsrf, devicesController.remove);
 
 module.exports = router;

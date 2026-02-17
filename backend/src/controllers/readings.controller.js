@@ -17,37 +17,40 @@
 
 const readingService = require("../services/readings.service.js");
 
-/**
- * Create and throw a 400 validation error for missing/invalid request inputs.
- */
+/* ========================================================================== */
+/* Helpers                                                                     */
+/* ========================================================================== */
+
+function safeQuery(req) {
+  return req.query ?? {};
+}
+
 function badRequest(message) {
   const err = new Error(message);
   err.status = 400;
   err.code = "VALIDATION_ERROR";
-  throw err;
+  return err;
 }
 
-/**
- * Require a query param to be present and non-empty.
- */
-function requireQuery(req, name) {
-  const value = req.query?.[name];
+function requireQueryParam(query, name) {
+  const value = query[name];
   if (value === undefined || value === null || value === "") {
-    badRequest(`${name} is required`);
+    throw badRequest(`${name} is required`);
   }
   return value;
 }
 
-/**
- * Extract authenticated beekeeper id from requireAuth context.
- */
 function getBeekeeperId(req) {
   const n = Number(req.user?.id);
   if (!Number.isInteger(n) || n <= 0) {
-    badRequest("Invalid beekeeperId");
+    throw badRequest("Invalid beekeeperId");
   }
   return n;
 }
+
+/* ========================================================================== */
+/* Handlers                                                                    */
+/* ========================================================================== */
 
 /**
  * GET /api/readings/since
@@ -55,24 +58,15 @@ function getBeekeeperId(req) {
  */
 exports.since = async (req, res, next) => {
   try {
-    const beekeeperId = getBeekeeperId(req);
-
-    // Required query params: presence checks only (service validates/normalizes).
-    const hiveId = requireQuery(req, "hiveId");
-    const since = requireQuery(req, "since");
-
-    // Optional params: service validates + normalizes.
-    const until = req.query.until;
-    const limit = req.query.limit;
-    const order = req.query.order;
+    const query = safeQuery(req);
 
     const readings = await readingService.getHiveReadingsSince({
-      beekeeperId,
-      hiveId,
-      since,
-      until,
-      limit,
-      order,
+      beekeeperId: getBeekeeperId(req),
+      hiveId: requireQueryParam(query, "hiveId"),
+      since: requireQueryParam(query, "since"),
+      until: query.until,
+      limit: query.limit,
+      order: query.order,
     });
 
     return res.status(200).json({ readings });
@@ -87,14 +81,11 @@ exports.since = async (req, res, next) => {
  */
 exports.latest = async (req, res, next) => {
   try {
-    const beekeeperId = getBeekeeperId(req);
-
-    // Required query param: presence check only (service validates/normalizes).
-    const hiveId = requireQuery(req, "hiveId");
+    const query = safeQuery(req);
 
     const reading = await readingService.getLatestForHive({
-      beekeeperId,
-      hiveId,
+      beekeeperId: getBeekeeperId(req),
+      hiveId: requireQueryParam(query, "hiveId"),
     });
 
     if (!reading) {

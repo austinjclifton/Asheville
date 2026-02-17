@@ -94,14 +94,12 @@ exports.createDevice = async ({ beekeeperId, hiveId, installedAt }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   assertPositiveInt(hiveId, "hiveId");
 
-  // Avoid extra work if the hive does not exist or is not owned.
   const hiveExists = await hiveExistsScoped({ beekeeperId, hiveId });
   if (!hiveExists) return null;
 
-  // Friendly 409 before hitting the DB constraint (still race-safe below).
   await assertHiveHasNoDevice({ beekeeperId, hiveId });
 
-  const installedIso = normalizeOptionalIso(installedAt ?? null, "installedAt");
+  const installedIso = normalizeOptionalIso(installedAt, "installedAt");
 
   try {
     return await deviceRepo.createScoped({
@@ -110,7 +108,6 @@ exports.createDevice = async ({ beekeeperId, hiveId, installedAt }) => {
       installedAt: installedIso,
     });
   } catch (err) {
-    // Race-safe: DB UNIQUE(device.hive_id) wins if creates interleave.
     if (isPgUniqueViolation(err)) {
       throw conflict("This hive already has a device");
     }

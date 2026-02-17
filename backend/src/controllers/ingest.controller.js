@@ -4,12 +4,30 @@
  * Ingest Controller
  *
  * Responsibilities:
- * - Validate telemetry payload shape (required fields + basic coercion)
- * - Delegate ingestion to service layer
- * - Return a minimal HTTP response
+ * - HTTP boundary only (Express req/res)
+ * - Minimal required-field presence checks
+ * - Delegate validation/policy to service layer
  */
 
 const ingestService = require("../services/ingest.service.js");
+
+/* ========================================================================== */
+/* Helpers                                                                     */
+/* ========================================================================== */
+
+function safeBody(req) {
+  return req.body ?? {};
+}
+
+function badRequest(message) {
+  const err = new Error(message);
+  err.status = 400;
+  return err;
+}
+
+/* ========================================================================== */
+/* Handlers                                                                    */
+/* ========================================================================== */
 
 /**
  * POST /api/ingest/readings
@@ -17,29 +35,19 @@ const ingestService = require("../services/ingest.service.js");
  */
 exports.create = async (req, res, next) => {
   try {
-    const {
-      deviceId,
-      recordedAt,
-      temperatureF,
-      batteryVoltage,
-      signalStrength,
-    } = req.body ?? {};
+    const body = safeBody(req);
 
-    // Require a minimal payload; service handles deeper validation/policy.
-    if (!deviceId || !recordedAt || temperatureF === undefined) {
-      return res.status(400).json({
-        error: "deviceId, recordedAt, and temperatureF are required",
-      });
-    }
+    // Minimal presence checks only (service handles types/ranges).
+    if (body.deviceId === undefined) throw badRequest("deviceId is required");
+    if (body.recordedAt === undefined) throw badRequest("recordedAt is required");
+    if (body.temperatureF === undefined) throw badRequest("temperatureF is required");
 
     await ingestService.createReading({
-      deviceId: Number(deviceId),
-      recordedAt,
-      temperatureF: Number(temperatureF),
-      batteryVoltage:
-        batteryVoltage !== undefined ? Number(batteryVoltage) : null,
-      signalStrength:
-        signalStrength !== undefined ? Number(signalStrength) : null,
+      deviceId: body.deviceId,               // pass-through
+      recordedAt: body.recordedAt,           // pass-through
+      temperatureF: body.temperatureF,       // pass-through
+      batteryVoltage: body.batteryVoltage ?? null,
+      signalStrength: body.signalStrength ?? null,
     });
 
     return res.status(201).json({ success: true });

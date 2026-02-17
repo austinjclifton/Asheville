@@ -14,9 +14,10 @@
 
 const readingRepo = require("../db/readings.db.js");
 
-/**
- * Create a 400 validation error.
- */
+/* ========================================================================== */
+/* Errors + Validation                                                         */
+/* ========================================================================== */
+
 function badRequest(message) {
   const err = new Error(message);
   err.status = 400;
@@ -24,9 +25,6 @@ function badRequest(message) {
   return err;
 }
 
-/**
- * Require a positive integer id and return the normalized number.
- */
 function requirePositiveInt(name, value) {
   const n = Number(value);
   if (!Number.isInteger(n) || n <= 0) {
@@ -36,10 +34,10 @@ function requirePositiveInt(name, value) {
 }
 
 /**
- * Normalize order to "asc" or "desc" (defaults to "asc").
+ * Default to DESC (most recent first) for time-series.
  */
 function normalizeOrder(order) {
-  if (order === undefined || order === null || order === "") return "asc";
+  if (order === undefined || order === null || order === "") return "desc";
 
   const o = String(order).toLowerCase().trim();
   if (o !== "asc" && o !== "desc") {
@@ -53,7 +51,8 @@ function normalizeOrder(order) {
  * Normalize limit with defaults and a hard max.
  */
 function normalizeLimit(limit, { max, defaultValue }) {
-  if (limit === undefined || limit === null || limit === "") return defaultValue;
+  if (limit === undefined || limit === null || limit === "")
+    return defaultValue;
 
   const n = Number(limit);
   if (!Number.isInteger(n) || n <= 0) {
@@ -65,16 +64,15 @@ function normalizeLimit(limit, { max, defaultValue }) {
 
 /**
  * Parse a required date-like input into a Date.
+ * Accepts ISO strings (recommended) and Date objects.
  */
 function parseDateLike(name, value) {
   if (value === undefined || value === null || value === "") {
     throw badRequest(`Invalid ${name}`);
   }
 
-  const d =
-    value instanceof Date ? value : typeof value === "string" || typeof value === "number" ? new Date(value) : null;
-
-  if (!d || Number.isNaN(d.getTime())) {
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(d.getTime())) {
     throw badRequest(`Invalid ${name}`);
   }
 
@@ -95,10 +93,19 @@ function parseOptionalUntil(sinceDate, until) {
   return u;
 }
 
+/**
+ * Reasonable defaults:
+ * - default 500 keeps responses snappy
+ * - max 10000 supports large exports when requested
+ */
 const HIVE_READ_LIMIT = Object.freeze({
-  defaultValue: 2000,
+  defaultValue: 500,
   max: 10000,
 });
+
+/* ========================================================================== */
+/* Public API                                                                  */
+/* ========================================================================== */
 
 /**
  * Hive time-series since a timestamp (optional until).
@@ -120,7 +127,6 @@ exports.getHiveReadingsSince = async ({
   const lim = normalizeLimit(limit, HIVE_READ_LIMIT);
   const ord = normalizeOrder(order);
 
-  // Pass normalized types to repo (Date objects for timestamps).
   return readingRepo.getHiveReadingsSince({
     beekeeperId: bkId,
     hiveId: hId,

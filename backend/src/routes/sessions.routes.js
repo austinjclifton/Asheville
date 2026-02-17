@@ -5,6 +5,7 @@ const router = express.Router();
 
 const sessionController = require("../controllers/session.controller.js");
 const { requireAuth } = require("../middleware/requireAuth.js");
+const { requireCsrf } = require("../middleware/requireCsrf.js");
 
 /**
  * GET /api/sessions/current
