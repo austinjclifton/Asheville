@@ -1,29 +1,22 @@
 "use strict";
 
 /**
- * readings service function index
+ * Readings Service
  *
- * Time-series (timestamp-based only)
- * - getHiveReadingsSince(params): Hive readings since a timestamp (optional until)
+ * Responsibilities:
+ * - Enforce policy + validation (ids, dates, limits, ordering)
+ * - Delegate ownership enforcement to repo joins (beekeeper -> hive -> device -> reading)
  *
- * Latest
- * - getLatestForHive(params): Latest reading across the hive
- *
- * Daily Aggregates (future)
- * - getHiveDailySince(params): STUB — daily points since a timestamp (optional until)
- *
- * - notes
- * - This service is the policy + validation gate (IDs, dates, limits, ordering)
- * - Repo enforces ownership via joins: beekeeper -> hive -> device -> reading
- * - No window presets here: callers must send explicit timestamps
+ * Notes:
+ * - Timestamp-based only: callers provide explicit since/until
+ * - Read-only: telemetry is immutable
  */
 
 const readingRepo = require("../db/readings.db.js");
 
-/* ========================================================================== */
-/* Errors                                                                      */
-/* ========================================================================== */
-
+/**
+ * Create a 400 validation error.
+ */
 function badRequest(message) {
   const err = new Error(message);
   err.status = 400;
@@ -31,83 +24,84 @@ function badRequest(message) {
   return err;
 }
 
-/* ========================================================================== */
-/* Validation / Normalization                                                  */
-/* ========================================================================== */
-
+/**
+ * Require a positive integer id and return the normalized number.
+ */
 function requirePositiveInt(name, value) {
   const n = Number(value);
-  if (!Number.isInteger(n) || n <= 0) throw badRequest(`Invalid ${name}`);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw badRequest(`Invalid ${name}`);
+  }
   return n;
 }
 
+/**
+ * Normalize order to "asc" or "desc" (defaults to "asc").
+ */
 function normalizeOrder(order) {
   if (order === undefined || order === null || order === "") return "asc";
+
   const o = String(order).toLowerCase().trim();
-  if (o !== "asc" && o !== "desc") throw badRequest("Invalid order");
+  if (o !== "asc" && o !== "desc") {
+    throw badRequest("Invalid order");
+  }
+
   return o;
 }
 
+/**
+ * Normalize limit with defaults and a hard max.
+ */
 function normalizeLimit(limit, { max, defaultValue }) {
   if (limit === undefined || limit === null || limit === "") return defaultValue;
+
   const n = Number(limit);
-  if (!Number.isInteger(n) || n <= 0) throw badRequest("Invalid limit");
+  if (!Number.isInteger(n) || n <= 0) {
+    throw badRequest("Invalid limit");
+  }
+
   return Math.min(n, max);
 }
 
+/**
+ * Parse a required date-like input into a Date.
+ */
 function parseDateLike(name, value) {
   if (value === undefined || value === null || value === "") {
     throw badRequest(`Invalid ${name}`);
   }
 
-  let d;
-  if (value instanceof Date) {
-    d = value;
-  } else if (typeof value === "string" || typeof value === "number") {
-    d = new Date(value);
-  } else {
+  const d =
+    value instanceof Date ? value : typeof value === "string" || typeof value === "number" ? new Date(value) : null;
+
+  if (!d || Number.isNaN(d.getTime())) {
     throw badRequest(`Invalid ${name}`);
   }
 
-  if (Number.isNaN(d.getTime())) throw badRequest(`Invalid ${name}`);
   return d;
 }
 
+/**
+ * Parse optional until and enforce until > since (exclusive upper bound).
+ */
 function parseOptionalUntil(sinceDate, until) {
   if (until === undefined || until === null || until === "") return null;
 
   const u = parseDateLike("until", until);
-  if (u.getTime() <= sinceDate.getTime()) throw badRequest("Invalid until");
+  if (u.getTime() <= sinceDate.getTime()) {
+    throw badRequest("Invalid until");
+  }
+
   return u;
 }
-
-/* ========================================================================== */
-/* Policy                                                                       */
-/* ========================================================================== */
 
 const HIVE_READ_LIMIT = Object.freeze({
   defaultValue: 2000,
   max: 10000,
 });
 
-/* ========================================================================== */
-/* Public API (Hive-first)                                                     */
-/* ========================================================================== */
-
 /**
- * getHiveReadingsSince
- *
  * Hive time-series since a timestamp (optional until).
- *
- * Required:
- * - beekeeperId
- * - hiveId
- * - since
- *
- * Optional:
- * - until (exclusive upper bound; must be > since)
- * - limit (default 2000, max 10000)
- * - order ("asc" default; "desc" supported)
  */
 exports.getHiveReadingsSince = async ({
   beekeeperId,
@@ -126,6 +120,7 @@ exports.getHiveReadingsSince = async ({
   const lim = normalizeLimit(limit, HIVE_READ_LIMIT);
   const ord = normalizeOrder(order);
 
+  // Pass normalized types to repo (Date objects for timestamps).
   return readingRepo.getHiveReadingsSince({
     beekeeperId: bkId,
     hiveId: hId,
@@ -137,8 +132,6 @@ exports.getHiveReadingsSince = async ({
 };
 
 /**
- * getLatestForHive
- *
  * Latest reading across the hive.
  */
 exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
@@ -151,15 +144,8 @@ exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
   });
 };
 
-/* ========================================================================== */
-/* Daily Aggregates (stub)                                                     */
-/* ========================================================================== */
-
 /**
- * getHiveDailySince (STUB)
- *
- * Future: returns daily data points (1 row/day) from reading_daily.
- * Signature is timestamp-based to match the rest of the API.
+ * Daily aggregates since a timestamp (stub).
  */
 exports.getHiveDailySince = async ({ beekeeperId, hiveId, since, until }) => {
   requirePositiveInt("beekeeperId", beekeeperId);

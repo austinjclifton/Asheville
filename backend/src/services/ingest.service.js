@@ -16,25 +16,61 @@
 
 const readingRepo = require("../db/readings.db.js");
 
-/* -------------------------------------------------------------------------- */
-/* Helpers                                                                    */
-/* -------------------------------------------------------------------------- */
+const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000; // 5 minutes
+const TEMP_F_MIN = -100;
+const TEMP_F_MAX = 150;
 
+/**
+ * Create a 400 error for invalid inputs.
+ */
 function badRequest(message) {
   const err = new Error(message);
   err.status = 400;
   return err;
 }
 
-function isValidDate(value) {
-  const d = new Date(value);
-  return !isNaN(d.getTime());
+/**
+ * Parse a required date-like input into a Date.
+ */
+function parseDateLike(field, value) {
+  if (value === undefined || value === null || value === "") {
+    throw badRequest(`Invalid ${field} timestamp`);
+  }
+
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    throw badRequest(`Invalid ${field} timestamp`);
+  }
+
+  return d;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Create Reading                                                             */
-/* -------------------------------------------------------------------------- */
+/**
+ * Require a finite number (not NaN / Infinity).
+ */
+function requireFiniteNumber(field, value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw badRequest(`${field} must be numeric`);
+  }
+  return value;
+}
 
+/**
+ * Normalize an optional number (allows null).
+ */
+function normalizeOptionalNumber(field, value) {
+  if (value === null) return null;
+  if (value === undefined) return null;
+
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw badRequest(`${field} must be numeric or null`);
+  }
+  return value;
+}
+
+/**
+ * Create a reading from telemetry data.
+ */
 exports.createReading = async ({
   deviceId,
   recordedAt,
@@ -42,73 +78,39 @@ exports.createReading = async ({
   batteryVoltage = null,
   signalStrength = null,
 }) => {
-  /* ---------------------------------------------------------------
-   * Device validation
-   * --------------------------------------------------------------- */
-
+  // Device validation
   if (!Number.isInteger(deviceId) || deviceId <= 0) {
     throw badRequest("Invalid deviceId");
   }
 
-  /* ---------------------------------------------------------------
-   * Timestamp validation
-   * --------------------------------------------------------------- */
+  // Timestamp validation
+  const recordedAtDate = parseDateLike("recordedAt", recordedAt);
 
-  if (!recordedAt || !isValidDate(recordedAt)) {
-    throw badRequest("Invalid recordedAt timestamp");
-  }
-
-  const recordedAtDate = new Date(recordedAt);
-
-  // Prevent spoofing far future timestamps
-  if (recordedAtDate.getTime() > Date.now() + 5 * 60 * 1000) {
+  // Prevent spoofing far-future timestamps.
+  if (recordedAtDate.getTime() > Date.now() + MAX_FUTURE_SKEW_MS) {
     throw badRequest("recordedAt cannot be in the future");
   }
 
-  /* ---------------------------------------------------------------
-   * Temperature validation
-   * --------------------------------------------------------------- */
-
-  if (typeof temperatureF !== "number" || Number.isNaN(temperatureF)) {
-    throw badRequest("temperatureF must be numeric");
-  }
-
-  // Match your DB constraint range for consistency
-  if (temperatureF <= -100 || temperatureF >= 150) {
+  // Temperature validation (match DB range constraints).
+  const temp = requireFiniteNumber("temperatureF", temperatureF);
+  if (temp <= TEMP_F_MIN || temp >= TEMP_F_MAX) {
     throw badRequest("temperatureF out of valid range");
   }
 
-  /* ---------------------------------------------------------------
-   * Optional fields validation
-   * --------------------------------------------------------------- */
-
-  if (
-    batteryVoltage !== null &&
-    (typeof batteryVoltage !== "number" || Number.isNaN(batteryVoltage))
-  ) {
-    throw badRequest("batteryVoltage must be numeric or null");
-  }
-
-  if (batteryVoltage !== null && batteryVoltage < 0) {
+  // Optional field validation
+  const batt = normalizeOptionalNumber("batteryVoltage", batteryVoltage);
+  if (batt !== null && batt < 0) {
     throw badRequest("batteryVoltage must be >= 0");
   }
 
-  if (
-    signalStrength !== null &&
-    (typeof signalStrength !== "number" || Number.isNaN(signalStrength))
-  ) {
-    throw badRequest("signalStrength must be numeric or null");
-  }
+  const rssi = normalizeOptionalNumber("signalStrength", signalStrength);
 
-  /* ---------------------------------------------------------------
-   * Persist reading
-   * --------------------------------------------------------------- */
-
+  // Persist reading
   return readingRepo.create({
     deviceId,
     recordedAt: recordedAtDate,
-    temperatureF,
-    batteryVoltage,
-    signalStrength,
+    temperatureF: temp,
+    batteryVoltage: batt,
+    signalStrength: rssi,
   });
 };

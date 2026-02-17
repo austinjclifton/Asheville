@@ -13,22 +13,27 @@
 
 const hiveRepo = require("../db/hives.db.js");
 
-/* ========================================================================== */
-/* Errors + Validation                                                         */
-/* ========================================================================== */
-
+/**
+ * Create a 400 error for invalid inputs.
+ */
 function badRequest(message) {
   const err = new Error(message);
   err.status = 400;
   return err;
 }
 
+/**
+ * Assert a value is a positive integer.
+ */
 function assertPositiveInt(value, field) {
   if (!Number.isInteger(value) || value <= 0) {
     throw badRequest(`${field} must be a positive integer`);
   }
 }
 
+/**
+ * Normalize and validate required hive name.
+ */
 function normalizeRequiredName(name) {
   if (typeof name !== "string") {
     throw badRequest("name is required");
@@ -47,14 +52,10 @@ function normalizeRequiredName(name) {
 }
 
 /**
- * normalizeNotes
- *
- * Semantics:
- * - undefined => not provided (PATCH)
+ * Normalize notes field with PATCH semantics.
+ * - undefined => not provided
  * - null => clear
- * - string => trimmed string (may become "" if user sends whitespace only)
- *
- * If you want whitespace-only notes to clear instead, swap "" -> null below.
+ * - string => trimmed string (may be "")
  */
 function normalizeNotes(notes) {
   if (notes === undefined) return undefined;
@@ -64,18 +65,18 @@ function normalizeNotes(notes) {
     throw badRequest("notes must be a string or null");
   }
 
-  const trimmed = notes.trim();
-  return trimmed;
+  return notes.trim();
 }
 
-/* ========================================================================== */
-/* Create                                                                      */
-/* ========================================================================== */
-
+/**
+ * POST-like: Create a hive for the authenticated beekeeper.
+ */
 exports.createHive = async ({ beekeeperId, name, notes }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
 
   const nameNorm = normalizeRequiredName(name);
+
+  // For create: notes defaults to null when omitted.
   const notesNorm = notes === undefined ? null : normalizeNotes(notes);
 
   return hiveRepo.create({
@@ -85,29 +86,32 @@ exports.createHive = async ({ beekeeperId, name, notes }) => {
   });
 };
 
-/* ========================================================================== */
-/* Read                                                                        */
-/* ========================================================================== */
-
+/**
+ * List hives for a beekeeper.
+ */
 exports.listHives = async ({ beekeeperId }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   return hiveRepo.listByBeekeeper({ beekeeperId });
 };
 
+/**
+ * Get a single hive by id (scoped).
+ */
 exports.getHive = async ({ beekeeperId, hiveId }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   assertPositiveInt(hiveId, "hiveId");
+
   return hiveRepo.findByIdScoped({ beekeeperId, hiveId });
 };
 
-/* ========================================================================== */
-/* Update                                                                      */
-/* ========================================================================== */
-
+/**
+ * Patch hive fields (name and/or notes).
+ */
 exports.updateHive = async ({ beekeeperId, hiveId, name, notes }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   assertPositiveInt(hiveId, "hiveId");
 
+  // For update: omitted fields stay undefined (PATCH semantics).
   const nameNorm = name === undefined ? undefined : normalizeRequiredName(name);
   const notesNorm = normalizeNotes(notes);
 
@@ -123,12 +127,12 @@ exports.updateHive = async ({ beekeeperId, hiveId, name, notes }) => {
   });
 };
 
-/* ========================================================================== */
-/* Delete                                                                      */
-/* ========================================================================== */
-
+/**
+ * Delete a hive by id (scoped).
+ */
 exports.deleteHive = async ({ beekeeperId, hiveId }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   assertPositiveInt(hiveId, "hiveId");
+
   return hiveRepo.removeScoped({ beekeeperId, hiveId });
 };

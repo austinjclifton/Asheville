@@ -1,51 +1,58 @@
 "use strict";
 
 /**
- * device service
+ * Devices Service
  *
- * Function Index:
- * - createDevice({ beekeeperId, hiveId, installedAt? }) -> device | null
- * - listDevices({ beekeeperId }) -> device[]
- * - listDevicesForHive({ beekeeperId, hiveId }) -> device[] | null     (null => hive not found / not owned)
- * - getDevice({ beekeeperId, deviceId }) -> device | null
- * - updateDevice({ beekeeperId, deviceId, installedAt?, lastSeenAt? }) -> device | null
- * - touchLastSeen({ beekeeperId, deviceId, seenAt? }) -> device | null
- * - deleteDevice({ beekeeperId, deviceId }) -> boolean
+ * Responsibilities:
+ * - Enforce domain invariants (types, 1:1 hive->device policy)
+ * - Normalize inputs (timestamps)
+ * - Coordinate repository calls (scoped by beekeeper)
+ *
+ * Notes:
+ * - Ownership is enforced via scoped repo methods (beekeeperId)
+ * - Under 1:1, a hive has 0 or 1 device
  */
 
 const deviceRepo = require("../db/devices.db.js");
 const hiveRepo = require("../db/hives.db.js");
 
-/* ========================================================================== */
-/* Errors + Validation Helpers                                                 */
-/* ========================================================================== */
-
+/**
+ * Create a 400 error for invalid inputs.
+ */
 function badRequest(message) {
   const err = new Error(message);
   err.status = 400;
   return err;
 }
 
+/**
+ * Create a 409 error for domain conflicts.
+ */
 function conflict(message) {
   const err = new Error(message);
   err.status = 409;
   return err;
 }
 
+/**
+ * Assert a value is a positive integer.
+ */
 function assertPositiveInt(value, field) {
   if (!Number.isInteger(value) || value <= 0) {
     throw badRequest(`${field} must be a positive integer`);
   }
 }
 
+/**
+ * Normalize an optional timestamp to ISO.
+ * - undefined => not provided (PATCH semantics)
+ * - null => explicitly clear
+ * - string/Date => ISO string
+ */
 function normalizeOptionalIso(value, field) {
-  // undefined => "not provided" (PATCH semantics)
   if (value === undefined) return undefined;
-
-  // null => explicitly clear
   if (value === null) return null;
 
-  // accept Date or string
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) {
     throw badRequest(`${field} must be a valid ISO8601 timestamp`);
@@ -54,29 +61,45 @@ function normalizeOptionalIso(value, field) {
   return d.toISOString();
 }
 
+/**
+ * Detect Postgres unique constraint violations (SQLSTATE 23505).
+ */
 function isPgUniqueViolation(err) {
-  // node-postgres uses err.code for SQLSTATE
   return err && err.code === "23505";
 }
 
-/* ========================================================================== */
-/* Create                                                                      */
-/* ========================================================================== */
+/**
+ * Ensure a hive exists and is owned by the beekeeper.
+ * Returns true/false (no throws for not-found).
+ */
+async function hiveExistsScoped({ beekeeperId, hiveId }) {
+  return hiveRepo.existsScoped({ beekeeperId, hiveId });
+}
 
-exports.createDevice = async ({ beekeeperId, hiveId, installedAt }) => {
-  assertPositiveInt(beekeeperId, "beekeeperId");
-  assertPositiveInt(hiveId, "hiveId");
-
-  // Ensure hive exists and is owned (keeps behavior consistent with listDevicesForHive)
-  const hiveExists = await hiveRepo.existsScoped({ beekeeperId, hiveId });
-  if (!hiveExists) return null;
-
-  // 1:1 enforcement (friendly error before DB constraint)
-  // Keep compatibility with current repo shape (list returns array).
+/**
+ * Enforce 1:1 hive->device policy with a fast existence check.
+ * Uses listByHiveScoped for compatibility with current repo surface.
+ */
+async function assertHiveHasNoDevice({ beekeeperId, hiveId }) {
   const existing = await deviceRepo.listByHiveScoped({ beekeeperId, hiveId });
   if (existing && existing.length > 0) {
     throw conflict("This hive already has a device");
   }
+}
+
+/**
+ * Create a device under a hive (scoped). Returns null if hive not found/not owned.
+ */
+exports.createDevice = async ({ beekeeperId, hiveId, installedAt }) => {
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  assertPositiveInt(hiveId, "hiveId");
+
+  // Avoid extra work if the hive does not exist or is not owned.
+  const hiveExists = await hiveExistsScoped({ beekeeperId, hiveId });
+  if (!hiveExists) return null;
+
+  // Friendly 409 before hitting the DB constraint (still race-safe below).
+  await assertHiveHasNoDevice({ beekeeperId, hiveId });
 
   const installedIso = normalizeOptionalIso(installedAt ?? null, "installedAt");
 
@@ -87,7 +110,7 @@ exports.createDevice = async ({ beekeeperId, hiveId, installedAt }) => {
       installedAt: installedIso,
     });
   } catch (err) {
-    // Race-safe: if two creates happen simultaneously, DB UNIQUE(device.hive_id) wins.
+    // Race-safe: DB UNIQUE(device.hive_id) wins if creates interleave.
     if (isPgUniqueViolation(err)) {
       throw conflict("This hive already has a device");
     }
@@ -95,44 +118,41 @@ exports.createDevice = async ({ beekeeperId, hiveId, installedAt }) => {
   }
 };
 
-/* ========================================================================== */
-/* Read                                                                        */
-/* ========================================================================== */
-
+/**
+ * List all devices for the authenticated beekeeper.
+ */
 exports.listDevices = async ({ beekeeperId }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   return deviceRepo.listByBeekeeper({ beekeeperId });
 };
 
 /**
- * listDevicesForHive
- *
- * Returns:
- * - device[] when hive exists and is owned (may be empty)
- * - null when hive does not exist or is not owned
- *
- * Note: Under 1:1, array will be [] or [device].
+ * List devices for a given hive.
+ * Returns null when hive does not exist or is not owned.
  */
 exports.listDevicesForHive = async ({ beekeeperId, hiveId }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   assertPositiveInt(hiveId, "hiveId");
 
-  const hiveExists = await hiveRepo.existsScoped({ beekeeperId, hiveId });
+  const hiveExists = await hiveExistsScoped({ beekeeperId, hiveId });
   if (!hiveExists) return null;
 
   return deviceRepo.listByHiveScoped({ beekeeperId, hiveId });
 };
 
+/**
+ * Get a device by id (scoped). Returns null if not found/not owned.
+ */
 exports.getDevice = async ({ beekeeperId, deviceId }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   assertPositiveInt(deviceId, "deviceId");
+
   return deviceRepo.findByIdScoped({ beekeeperId, deviceId });
 };
 
-/* ========================================================================== */
-/* Update                                                                      */
-/* ========================================================================== */
-
+/**
+ * Update device fields (scoped). Returns null if not found/not owned.
+ */
 exports.updateDevice = async ({
   beekeeperId,
   deviceId,
@@ -145,6 +165,7 @@ exports.updateDevice = async ({
   const installedIso = normalizeOptionalIso(installedAt, "installedAt");
   const lastSeenIso = normalizeOptionalIso(lastSeenAt, "lastSeenAt");
 
+  // Enforce PATCH semantics at the service boundary.
   if (installedIso === undefined && lastSeenIso === undefined) {
     throw badRequest("Provide at least one field to update");
   }
@@ -158,10 +179,7 @@ exports.updateDevice = async ({
 };
 
 /**
- * touchLastSeen
- *
- * Convenience for “device ping / ingest” flows.
- * If seenAt omitted, uses now() in repo.
+ * Touch lastSeenAt for a device (scoped). If seenAt is omitted, repo can default to now().
  */
 exports.touchLastSeen = async ({ beekeeperId, deviceId, seenAt }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
@@ -176,10 +194,9 @@ exports.touchLastSeen = async ({ beekeeperId, deviceId, seenAt }) => {
   });
 };
 
-/* ========================================================================== */
-/* Delete                                                                      */
-/* ========================================================================== */
-
+/**
+ * Delete a device (scoped). Returns boolean from repo.
+ */
 exports.deleteDevice = async ({ beekeeperId, deviceId }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   assertPositiveInt(deviceId, "deviceId");

@@ -4,14 +4,14 @@
  * Sessions Service
  *
  * Responsibilities:
- * - Own session lifecycle mechanics (create / validate / invalidate)
+ * - Own session lifecycle (create / validate / invalidate)
  * - Enforce session state rules (active + not expired)
- * - Generate session and CSRF tokens
+ * - Generate session + CSRF tokens
  *
  * Guarantees:
  * - Expired sessions are treated as invalid
  * - Expired sessions are invalidated on access
- * - Services normalize and validate all inputs
+ * - Auth failures return null (do not throw)
  */
 
 const crypto = require("crypto");
@@ -19,41 +19,54 @@ const crypto = require("crypto");
 const sessionsRepo = require("../db/sessions.db");
 const usersRepo = require("../db/users.db");
 
-/* -------------------------------------------------------------------------- */
-/* Configuration                                                               */
-/* -------------------------------------------------------------------------- */
-
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
-/* -------------------------------------------------------------------------- */
-/* Time Utilities                                                              */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * Return current time (isolated for testability).
+ */
 function now() {
   return new Date();
 }
 
+/**
+ * Compute session expiration timestamp.
+ */
 function computeExpiration() {
   return new Date(now().getTime() + SESSION_DURATION_MS);
 }
 
+/**
+ * Check whether an expiration timestamp is in the past.
+ */
 function isExpired(expiresAt) {
   const exp = expiresAt instanceof Date ? expiresAt : new Date(expiresAt);
   return exp <= now();
 }
 
-/* -------------------------------------------------------------------------- */
-/* Token Utilities                                                             */
-/* -------------------------------------------------------------------------- */
-
+/**
+ * Generate a cryptographically secure random token.
+ */
 function generateToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString("hex");
 }
 
-/* -------------------------------------------------------------------------- */
-/* Mappers                                                                     */
-/* -------------------------------------------------------------------------- */
+/**
+ * Normalize and validate a positive integer id.
+ */
+function normalizePositiveInt(value, field) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) {
+    const err = new Error(`${field} is required`);
+    err.status = 400;
+    err.code = "VALIDATION_ERROR";
+    throw err;
+  }
+  return n;
+}
 
+/**
+ * Map a session DB row to API/service shape.
+ */
 function mapSessionRow(row) {
   return {
     id: row.id,
@@ -67,6 +80,9 @@ function mapSessionRow(row) {
   };
 }
 
+/**
+ * Map a user DB row to minimal session context shape.
+ */
 function mapUserRow(row) {
   return {
     id: Number(row.id),
@@ -75,22 +91,12 @@ function mapUserRow(row) {
   };
 }
 
-/* -------------------------------------------------------------------------- */
-/* Public API                                                                  */
-/* -------------------------------------------------------------------------- */
-
 /**
- * createSession
- *
- * Creates and persists a new session for a user.
+ * Create and persist a new session for a user.
  * Allows multiple concurrent sessions by design.
  */
 exports.createSession = async ({ beekeeperId }) => {
-  const normalizedId = Number(beekeeperId);
-
-  if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
-    throw new Error("beekeeperId is required");
-  }
+  const normalizedId = normalizePositiveInt(beekeeperId, "beekeeperId");
 
   const sessionToken = generateToken(32);
   const csrfToken = generateToken(32);
@@ -107,17 +113,16 @@ exports.createSession = async ({ beekeeperId }) => {
 };
 
 /**
- * validateSession
- *
- * Validates a session token and returns its context.
+ * Validate a session token and return its context.
  *
  * Returns:
- * - null if session is missing, inactive, or expired
+ * - null if missing, inactive, expired, or orphaned
  * - { session, user } if valid
  *
- * MUST NOT throw for auth failures.
+ * Must not throw for auth failures.
  */
 exports.validateSession = async ({ sessionToken }) => {
+  // Treat missing/blank tokens as unauthenticated.
   if (typeof sessionToken !== "string" || sessionToken.trim() === "") {
     return null;
   }
@@ -125,24 +130,25 @@ exports.validateSession = async ({ sessionToken }) => {
   const sessionRow = await sessionsRepo.findByToken(sessionToken);
   if (!sessionRow) return null;
 
+  // Inactive sessions are invalid.
   if (sessionRow.active !== true) {
     return null;
   }
 
+  // Expired sessions are invalidated opportunistically.
   if (isExpired(sessionRow.expires_at)) {
-    // Invalidate expired session opportunistically
     await sessionsRepo.invalidate(sessionRow.id);
     return null;
   }
 
+  // Session must resolve to a real user; otherwise invalidate defensively.
   const userRow = await usersRepo.findById(sessionRow.beekeeper_id);
   if (!userRow) {
-    // Defensive: orphaned session
     await sessionsRepo.invalidate(sessionRow.id);
     return null;
   }
 
-  // Update activity timestamp only after full validation
+  // Touch activity only after the session is fully validated.
   await sessionsRepo.touch(sessionRow.id);
 
   return {
@@ -152,10 +158,7 @@ exports.validateSession = async ({ sessionToken }) => {
 };
 
 /**
- * invalidateSession
- *
- * Invalidates a single session by token.
- * No-op if session does not exist.
+ * Invalidate a single session by token (no-op if not found).
  */
 exports.invalidateSession = async ({ sessionToken }) => {
   if (typeof sessionToken !== "string" || sessionToken.trim() === "") {
@@ -169,16 +172,9 @@ exports.invalidateSession = async ({ sessionToken }) => {
 };
 
 /**
- * invalidateAllSessionsForUser
- *
- * Invalidates all sessions for a user.
+ * Invalidate all sessions for a user.
  */
 exports.invalidateAllSessionsForUser = async ({ beekeeperId }) => {
-  const normalizedId = Number(beekeeperId);
-
-  if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
-    throw new Error("beekeeperId is required");
-  }
-
+  const normalizedId = normalizePositiveInt(beekeeperId, "beekeeperId");
   await sessionsRepo.invalidateAllForBeekeeper(normalizedId);
 };
