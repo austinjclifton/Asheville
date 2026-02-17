@@ -2,13 +2,13 @@
 
 const express = require("express");
 const router = express.Router();
-const { query } = require("../db/pool"); // adjust path if needed
 
-/* -------------------------------------------------------------------------- */
-/* GET /health                                                                 */
-/* Liveness: process is running                                                */
-/* -------------------------------------------------------------------------- */
+const { query } = require("../db/pool");
 
+/**
+ * GET /health
+ * Liveness probe (process is up).
+ */
 router.get("/", (req, res) => {
   return res.status(200).json({
     status: "ok",
@@ -17,22 +17,19 @@ router.get("/", (req, res) => {
   });
 });
 
-/* -------------------------------------------------------------------------- */
-/* GET /health/ready                                                           */
-/* Readiness: DB reachable                                                     */
-/* -------------------------------------------------------------------------- */
-
-router.get("/ready", async (req, res, next) => {
+/**
+ * GET /health/ready
+ * Readiness probe (DB reachable).
+ */
+router.get("/ready", async (req, res) => {
   try {
-    // Minimal, fast DB check
     await query("SELECT 1");
     return res.status(200).json({
       status: "ok",
       db: "ok",
       timestamp: new Date().toISOString(),
     });
-  } catch (err) {
-    // Don't leak internals; just indicate not ready
+  } catch (_err) {
     return res.status(503).json({
       status: "degraded",
       db: "down",
