@@ -9,6 +9,8 @@
  * - Delegate validation/policy to service layer
  */
 
+//temp, device id, signal strength, sensor id?
+
 const ingestService = require("../services/ingest.service.js");
 
 /* ========================================================================== */
