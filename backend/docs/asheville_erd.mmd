@@ -1,0 +1,97 @@
+---
+config:
+  layout: elk
+---
+erDiagram
+
+  BEEKEEPER {
+    BIGINT id PK
+    VARCHAR(50) username UK
+    VARCHAR(255) password_hash
+    VARCHAR(254) email UK
+    VARCHAR(32) phone
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+
+  LOCATION {
+    BIGINT id PK
+    VARCHAR(120) name
+    DOUBLE lat
+    DOUBLE lon
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+
+  HIVE {
+    BIGINT id PK
+    BIGINT beekeeper_id FK
+    BIGINT location_id FK
+    VARCHAR(100) name
+    TEXT notes
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+
+  DEVICE {
+    BIGINT id PK
+    BIGINT hive_id FK
+    TIMESTAMPTZ installed_at
+    TIMESTAMPTZ last_seen_at
+  }
+
+  READING {
+    BIGINT id PK
+    BIGINT device_id FK
+    TIMESTAMPTZ recorded_at
+    NUMERIC temperature_f
+    NUMERIC battery_voltage
+    NUMERIC signal_strength
+    TIMESTAMPTZ created_at
+  }
+
+  EXTERNAL_CONDITION {
+    BIGINT id PK
+    BIGINT location_id FK
+    TIMESTAMPTZ bucket_at
+    TIMESTAMPTZ fetched_at
+    VARCHAR(40) provider
+    VARCHAR(16) status
+    TEXT error_message
+    DOUBLE temp_c
+    DOUBLE humidity_pct
+    DOUBLE precip_mm
+    DOUBLE wind_mps
+    DOUBLE wind_gust_mps
+    DOUBLE pressure_hpa
+    DOUBLE cloud_pct
+    JSONB raw_json
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+
+  SESSION {
+    BIGINT id PK
+    BIGINT beekeeper_id FK
+    TEXT session_token UK
+    TEXT csrf_token UK
+    BOOLEAN active
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ expires_at
+    TIMESTAMPTZ last_activity_at
+  }
+
+  PASSWORD_RESET_TOKEN {
+    BIGINT beekeeper_id PK, FK
+    TEXT token_hash
+    TIMESTAMPTZ expires_at
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ consumed_at
+  }
+  BEEKEEPER ||--o{ HIVE : owns
+  LOCATION  ||--o{ HIVE : located_at
+  HIVE      ||--|| DEVICE : has
+  DEVICE    ||--o{ READING : records
+  LOCATION  ||--o{ EXTERNAL_CONDITION : conditions
+  BEEKEEPER ||--o{ SESSION : sessions
+  BEEKEEPER ||--|| PASSWORD_RESET_TOKEN : reset_token
