@@ -1,11 +1,30 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch, setCsrfToken } from '../api';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    navigate('/dashboard');
+    setError('');
+    setLoading(true);
+    try {
+      const data = await apiFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      setCsrfToken(data.csrfToken);
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err.message || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -26,6 +45,20 @@ export default function LoginPage() {
           <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>Asheville</h1>
         </div>
         
+        {error && (
+          <div style={{
+            marginBottom: '16px',
+            padding: '10px 14px',
+            background: '#fef2f2',
+            border: '1px solid #fee2e2',
+            borderRadius: '4px',
+            color: '#dc2626',
+            fontSize: '14px'
+          }}>
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleLogin}>
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>
@@ -34,6 +67,9 @@ export default function LoginPage() {
             <input 
               type="email" 
               placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
               style={{ 
                 width: '100%', 
                 padding: '10px', 
@@ -50,6 +86,9 @@ export default function LoginPage() {
             <input 
               type="password" 
               placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
               style={{ 
                 width: '100%', 
                 padding: '10px', 
@@ -73,6 +112,7 @@ export default function LoginPage() {
           
           <button 
             type="submit"
+            disabled={loading}
             style={{
               width: '100%',
               padding: '12px',
@@ -81,10 +121,11 @@ export default function LoginPage() {
               border: 'none',
               borderRadius: '4px',
               fontWeight: '500',
-              cursor: 'pointer'
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.7 : 1
             }}
           >
-            Sign In
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
       </div>

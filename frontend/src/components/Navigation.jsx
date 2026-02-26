@@ -1,7 +1,9 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { apiFetch, setCsrfToken } from '../api';
 
 export default function Navigation() {
   const location = useLocation();
+  const navigate = useNavigate();
   
   const navItems = [
     { href: "/dashboard", label: "Dashboard", icon: "D" },
@@ -9,6 +11,17 @@ export default function Navigation() {
     { href: "/alerts", label: "Alerts", icon: "Al" },
     { href: "/settings", label: "Settings", icon: "S" },
   ];
+
+  const handleLogout = async (e) => {
+    e.preventDefault();
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch (_) {
+      //ignore errors
+    }
+    setCsrfToken(null);
+    navigate('/');
+  };
 
   return (
     <nav style={{
@@ -59,8 +72,9 @@ export default function Navigation() {
       ))}
       
       <div style={{ marginTop: 'auto' }}>
-        <Link
-          to="/"
+        <a
+          href="#"
+          onClick={handleLogout}
           style={{
             width: '40px',
             height: '40px',
@@ -69,12 +83,13 @@ export default function Navigation() {
             justifyContent: 'center',
             fontSize: '20px',
             textDecoration: 'none',
-            color: 'inherit'
+            color: 'inherit',
+            cursor: 'pointer'
           }}
           title="Logout"
         >
           Logout
-        </Link>
+        </a>
       </div>
     </nav>
   );
