@@ -17,8 +17,10 @@ erDiagram
   LOCATION {
     BIGINT id PK
     VARCHAR(120) name
-    DOUBLE lat
-    DOUBLE lon
+    DOUBLE_PRECISION lat
+    DOUBLE_PRECISION lon
+    INTEGER lat_e6 UK
+    INTEGER lon_e6 UK
     TIMESTAMPTZ created_at
     TIMESTAMPTZ updated_at
   }
@@ -38,33 +40,35 @@ erDiagram
     BIGINT hive_id FK
     TIMESTAMPTZ installed_at
     TIMESTAMPTZ last_seen_at
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
   }
 
   READING {
     BIGINT id PK
     BIGINT device_id FK
-    TIMESTAMPTZ recorded_at
-    NUMERIC temperature_f
-    NUMERIC battery_voltage
-    NUMERIC signal_strength
+    TIMESTAMPTZ bucket_at UK
+    TIMESTAMPTZ received_at
+    DOUBLE_PRECISION temperature_c
+    SMALLINT rssi_dbm
     TIMESTAMPTZ created_at
   }
 
   EXTERNAL_CONDITION {
     BIGINT id PK
     BIGINT location_id FK
-    TIMESTAMPTZ bucket_at
+    TIMESTAMPTZ bucket_at UK
     TIMESTAMPTZ fetched_at
     VARCHAR(40) provider
     VARCHAR(16) status
     TEXT error_message
-    DOUBLE temp_c
-    DOUBLE humidity_pct
-    DOUBLE precip_mm
-    DOUBLE wind_mps
-    DOUBLE wind_gust_mps
-    DOUBLE pressure_hpa
-    DOUBLE cloud_pct
+    DOUBLE_PRECISION temp_c
+    DOUBLE_PRECISION humidity_pct
+    DOUBLE_PRECISION precip_mm
+    DOUBLE_PRECISION wind_mps
+    DOUBLE_PRECISION wind_gust_mps
+    DOUBLE_PRECISION pressure_hpa
+    DOUBLE_PRECISION cloud_pct
     JSONB raw_json
     TIMESTAMPTZ created_at
     TIMESTAMPTZ updated_at
@@ -88,6 +92,7 @@ erDiagram
     TIMESTAMPTZ created_at
     TIMESTAMPTZ consumed_at
   }
+
   BEEKEEPER ||--o{ HIVE : owns
   LOCATION  ||--o{ HIVE : located_at
   HIVE      ||--|| DEVICE : has
