@@ -39,6 +39,12 @@ app.set("trust proxy", 1);
 
 app.use(express.json());
 
+// Log all requests (VM/hardware debugging)
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
 app.use(
   cors({
     origin: true,
@@ -47,6 +53,21 @@ app.use(
 );
 
 app.use(cookieParser());
+
+/* ================================================================
+ * VM Debug Endpoints (root)
+ * ================================================================ */
+
+app.get("/", (req, res) => {
+  console.log("GET request received!");
+  return res.json({ message: "Hello from server!", timestamp: Date.now() });
+});
+
+app.post("/", (req, res) => {
+  console.log("POST request received!");
+  console.log("Data:", req.body);
+  return res.json({ success: true, received: req.body });
+});
 
 /* ================================================================
  * Routes
@@ -79,14 +100,14 @@ setupSwagger(app);
 app.use((err, req, res, next) => {
   console.error(err);
 
-  res.status(err.status || 500).json({
+  return res.status(err.status || 500).json({
     error: err.message || "Internal server error",
   });
 });
 
 // 404 fallback
 app.use((req, res) => {
-  res.status(404).json({ error: "Not found" });
+  return res.status(404).json({ error: "Not found" });
 });
 
 module.exports = app;
