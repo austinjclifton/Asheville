@@ -1,14 +1,15 @@
 "use strict";
 
 const express = require("express");
+const ingestController = require("../controllers/ingest.controller.js");
+const { requireIngestToken } = require("../middleware/requireIngestToken.js");
+
 const router = express.Router();
 
-const ingestController = require("../controllers/ingest.controller.js");
-
 /**
- * POST /api/ingest/readings
- * Accept telemetry payload from a device.
+ * POST /ingest/readings
+ * Accepts telemetry payload from a device
  */
-router.post("/readings", ingestController.create);
+router.post("/readings", requireIngestToken, ingestController.create);
 
 module.exports = router;

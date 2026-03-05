@@ -22,6 +22,8 @@ const hiveRoutes = require("./routes/hives.routes");
 const deviceRoutes = require("./routes/devices.routes");
 const readingRoutes = require("./routes/readings.routes");
 const ingestRoutes = require("./routes/ingest.routes");
+const externalRoutes = require("./routes/externalConditions.routes.js");
+const locationsRoutes = require("./routes/locations.routes.js");
 
 // ----- Swagger -----
 const { setupSwagger } = require("./utils/swagger.js");
@@ -57,6 +59,8 @@ app.use("/api/sessions", sessionRoutes);
 app.use("/api/hives", hiveRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/readings", readingRoutes);
+app.use("/api/external-conditions", externalRoutes);
+app.use("/api/locations", locationsRoutes);
 
 // External / hardware-facing ingest API
 app.use("/ingest", ingestRoutes);

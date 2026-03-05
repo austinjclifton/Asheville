@@ -9,13 +9,13 @@ const { requireCsrf } = require("../middleware/requireCsrf.js");
 
 /**
  * GET /api/sessions/current
- * Return the current session context. (Auth)
+ * Returns the current session context (Auth)
  */
 router.get("/current", requireAuth, sessionController.current);
 
 /**
  * DELETE /api/sessions/current
- * Invalidate only the current session (log out this device). (Auth)
+ * Invalidates only the current session (log out this device) (Auth + CSRF)
  */
 router.delete(
   "/current",
@@ -26,7 +26,7 @@ router.delete(
 
 /**
  * DELETE /api/sessions
- * Invalidate all sessions for the authenticated user. (Auth)
+ * Invalidates all sessions for the authenticated user (Auth + CSRF)
  */
 router.delete("/", requireAuth, requireCsrf, sessionController.destroyAll);
 

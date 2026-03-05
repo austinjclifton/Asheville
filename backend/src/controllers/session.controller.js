@@ -1,19 +1,11 @@
 "use strict";
 
-/**
- * Session Controller
- *
- * Responsibilities:
- * - HTTP request/response concerns only
- * - Return current session context
- * - Delegate invalidation to SessionsService
- *
- * Assumptions:
- * - requireAuth populates req.user and req.session
- */
-
 const sessionService = require("../services/sessions.service.js");
 const { clearSessionCookie } = require("../utils/sessionCookie.js");
+
+/* ========================================================================== */
+/* GET                                                                         */
+/* ========================================================================== */
 
 /**
  * GET /api/sessions/current
@@ -31,6 +23,18 @@ exports.current = async (req, res, next) => {
     return next(err);
   }
 };
+
+/* ========================================================================== */
+/* POST                                                                        */
+/* ========================================================================== */
+
+/* ========================================================================== */
+/* PATCH                                                                       */
+/* ========================================================================== */
+
+/* ========================================================================== */
+/* DELETE                                                                      */
+/* ========================================================================== */
 
 /**
  * DELETE /api/sessions/current
@@ -58,7 +62,7 @@ exports.destroyCurrent = async (req, res, next) => {
 exports.destroyAll = async (req, res, next) => {
   try {
     await sessionService.invalidateAllSessionsForUser({
-      beekeeperId: Number(req.user.id),
+      beekeeperId: authedUserId(req),
     });
 
     clearSessionCookie(res);
@@ -67,3 +71,26 @@ exports.destroyAll = async (req, res, next) => {
     return next(err);
   }
 };
+
+/* ========================================================================== */
+/* Helpers                                                                     */
+/* ========================================================================== */
+
+function httpError(status, code, message) {
+  const err = new Error(message);
+  err.status = status;
+  err.code = code;
+  return err;
+}
+
+function badRequest(message) {
+  return httpError(400, "VALIDATION_ERROR", message);
+}
+
+function authedUserId(req) {
+  const n = Number(req.user?.id);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw badRequest("Invalid authenticated user");
+  }
+  return n;
+}

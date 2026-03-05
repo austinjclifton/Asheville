@@ -4,105 +4,16 @@
  * Readings Repository (PostgreSQL)
  * Table: reading
  *
- * Responsibilities:
- * - SQL only (no business rules)
- * - Parameterized queries only
- * - Enforce ownership for dashboard reads via joins:
- *   beekeeper -> hive -> device -> reading
- *
  * Notes:
- * - Inputs are validated/normalized by the service layer
- * - Ingest inserts are device-scoped (no beekeeper join here)
+ * - Ownership enforced via joins: beekeeper -> hive -> device -> reading
  */
 
 const { query } = require("./pool");
 
-/**
- * Map common Postgres constraint errors to stable API errors.
- */
-function mapPgError(err) {
-  // Unique violation (e.g., uq_reading_device_recorded_at)
-  if (err?.code === "23505") {
-    const e = new Error("Duplicate reading");
-    e.status = 409;
-    e.code = "DUPLICATE_READING";
-    return e;
-  }
+/* ========================================================================== */
+/* Dashboard reads                                                             */
+/* ========================================================================== */
 
-  // Foreign key violation (device_id doesn't exist)
-  if (err?.code === "23503") {
-    const e = new Error("Device does not exist");
-    e.status = 400;
-    e.code = "DEVICE_NOT_FOUND";
-    return e;
-  }
-
-  // Check constraint violation (range checks)
-  if (err?.code === "23514") {
-    const e = new Error("Invalid reading values");
-    e.status = 400;
-    e.code = "INVALID_READING";
-    return e;
-  }
-
-  // Numeric out of range / invalid text representation
-  if (err?.code === "22003" || err?.code === "22P02") {
-    const e = new Error("Invalid reading values");
-    e.status = 400;
-    e.code = "INVALID_READING";
-    return e;
-  }
-
-  return null;
-}
-
-/**
- * ORDER BY direction cannot be parameterized; guard against injection.
- */
-function toOrderSql(order) {
-  const o = String(order ?? "asc").toLowerCase().trim();
-  if (o === "asc") return "ASC";
-  if (o === "desc") return "DESC";
-  return "ASC";
-}
-
-/**
- * Insert a reading for a device (ingest-only; relies on DB constraints).
- */
-exports.createReading = async ({
-  deviceId,
-  recordedAt,
-  temperatureF,
-  batteryVoltage = null,
-  signalStrength = null,
-}) => {
-  try {
-    const rows = await query(
-      `
-      INSERT INTO reading (
-        device_id,
-        recorded_at,
-        temperature_f,
-        battery_voltage,
-        signal_strength
-      )
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, device_id, recorded_at, created_at
-      `,
-      [deviceId, recordedAt, temperatureF, batteryVoltage, signalStrength]
-    );
-
-    return rows[0] ?? null;
-  } catch (err) {
-    const mapped = mapPgError(err);
-    if (mapped) throw mapped;
-    throw err;
-  }
-};
-
-/**
- * Time-series readings for a hive since (optional until).
- */
 exports.getHiveReadingsSince = async ({
   beekeeperId,
   hiveId,
@@ -112,62 +23,65 @@ exports.getHiveReadingsSince = async ({
   order = "asc",
 }) => {
   const orderSql = toOrderSql(order);
+  const limitVal = toLimitValue(limit, 5000);
 
   return query(
     `
     SELECT
       r.id,
       r.device_id,
-      r.recorded_at,
-      r.temperature_f,
-      r.battery_voltage,
-      r.signal_strength,
+      r.bucket_at,
+      r.received_at,
+      r.temperature_c,
+      r.rssi_dbm,
       r.created_at
     FROM hive h
-    JOIN device d ON d.hive_id = h.id
-    JOIN reading r ON r.device_id = d.id
+    JOIN device d
+      ON d.hive_id = h.id
+    JOIN reading r
+      ON r.device_id = d.id
     WHERE h.beekeeper_id = $1
       AND h.id = $2
-      AND r.recorded_at >= $3
-      AND ($4::timestamptz IS NULL OR r.recorded_at < $4::timestamptz)
-    ORDER BY r.recorded_at ${orderSql}
+      AND r.bucket_at >= $3::timestamptz
+      AND ($4::timestamptz IS NULL OR r.bucket_at < $4::timestamptz)
+    ORDER BY r.bucket_at ${orderSql}
     LIMIT $5
     `,
-    [beekeeperId, hiveId, since, until, limit]
+    [beekeeperId, hiveId, since, until, limitVal],
   );
 };
 
-/**
- * Latest reading across the hive.
- */
 exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
   const rows = await query(
     `
     SELECT
       r.id,
       r.device_id,
-      r.recorded_at,
-      r.temperature_f,
-      r.battery_voltage,
-      r.signal_strength,
+      r.bucket_at,
+      r.received_at,
+      r.temperature_c,
+      r.rssi_dbm,
       r.created_at
     FROM hive h
-    JOIN device d ON d.hive_id = h.id
-    JOIN reading r ON r.device_id = d.id
+    JOIN device d
+      ON d.hive_id = h.id
+    JOIN reading r
+      ON r.device_id = d.id
     WHERE h.beekeeper_id = $1
       AND h.id = $2
-    ORDER BY r.recorded_at DESC
+    ORDER BY r.bucket_at DESC
     LIMIT 1
     `,
-    [beekeeperId, hiveId]
+    [beekeeperId, hiveId],
   );
 
   return rows[0] ?? null;
 };
 
-/**
- * Daily aggregates since a timestamp (stub).
- */
+/* ========================================================================== */
+/* Daily aggregates (stubs)                                                    */
+/* ========================================================================== */
+
 exports.getHiveDailySince = async () => {
   const e = new Error("Daily aggregates not implemented");
   e.status = 501;
@@ -175,12 +89,28 @@ exports.getHiveDailySince = async () => {
   throw e;
 };
 
-/**
- * Latest daily aggregate row for a hive (stub).
- */
 exports.getLatestDailyForHive = async () => {
   const e = new Error("Daily aggregates not implemented");
   e.status = 501;
   e.code = "NOT_IMPLEMENTED";
   throw e;
 };
+
+/* ========================================================================== */
+/* Helpers                                                                     */
+/* ========================================================================== */
+
+function toOrderSql(order) {
+  const o = String(order ?? "asc").toLowerCase().trim();
+  if (o === "asc") return "ASC";
+  if (o === "desc") return "DESC";
+  return "ASC";
+}
+
+function toLimitValue(limit, fallback = 5000) {
+  const n = Number(limit);
+  if (!Number.isFinite(n)) return fallback;
+  const i = Math.floor(n);
+  if (i <= 0) return fallback;
+  return Math.min(i, 100000);
+}

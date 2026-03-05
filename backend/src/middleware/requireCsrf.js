@@ -40,12 +40,5 @@ exports.requireCsrf = (req, res, next) => {
     return res.status(403).json({ error: "Invalid CSRF token" });
   }
 
-  console.log("CSRF DEBUG", {
-    header: req.get("x-csrf-token"),
-    cookieSessionId: req.cookies.sessionId,
-    sessionId: req.session?.id,
-    sessionCsrf: req.session?.csrfToken, // or from repo result
-  });
-
   return next();
 };
