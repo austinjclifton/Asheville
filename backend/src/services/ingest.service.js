@@ -41,7 +41,8 @@ const TRIGGER_EXTERNAL_ON_INGEST =
 exports.createReading = async ({ deviceId, temperature, rssi }) => {
   const devId = requirePositiveInt("deviceId", deviceId);
 
-  const bucketAt = floorToTenMinutes(new Date());
+  //const bucketAt = floorToTenMinutes(new Date());
+  const bucketAt = new Date().toISOString();
 
   const temp = requireFiniteNumber("temperature", temperature);
   if (!(temp > TEMP_MIN && temp < TEMP_MAX)) {
