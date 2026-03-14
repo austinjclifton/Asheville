@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import Navigation from "../components/Navigation";
 
-//Dummy alerts data
-const initialAlerts = [
+const INITIAL_ALERTS = [
   {
     id: 1,
     severity: 'critical',
@@ -11,7 +10,7 @@ const initialAlerts = [
     description: 'Hive temperature dropped to 88.2°F, which is below the safe operating range. Immediate attention required.',
     time: '2 hours ago',
     temperature: '88.2°F',
-    type: 'Below Range'
+    type: 'Below Range',
   },
   {
     id: 2,
@@ -21,17 +20,17 @@ const initialAlerts = [
     description: 'Temperature decreased by 4.5°F within 15 minutes. Check hive insulation and external conditions.',
     time: '4 hours ago',
     temperature: '90.8°F',
-    type: 'Below Range'
+    type: 'Below Range',
   },
   {
     id: 3,
     severity: 'info',
     status: 'resolved',
     title: 'Temperature Approaching Upper Limit',
-    description: 'Current temperature at 96.8°F is approaching the upper threshold of 97°F',
+    description: 'Current temperature at 96.8°F is approaching the upper threshold of 97°F.',
     time: '8 hours ago',
     temperature: '96.8°F',
-    type: 'Normal'
+    type: 'Normal',
   },
   {
     id: 4,
@@ -41,7 +40,7 @@ const initialAlerts = [
     description: 'External temperature has risen to 85°F, monitor hive cooling system.',
     time: '1 hour ago',
     temperature: '85.0°F',
-    type: 'Warning'
+    type: 'Warning',
   },
   {
     id: 5,
@@ -51,452 +50,293 @@ const initialAlerts = [
     description: 'Hive temperature has returned to normal operating range.',
     time: '12 hours ago',
     temperature: '94.2°F',
-    type: 'Normal'
-  }
+    type: 'Normal',
+  },
 ];
 
+const SEVERITY_CONFIG = {
+  critical: { bg: '#fef2f2', border: '#fecaca', accent: '#ef4444', label: 'CRITICAL', dot: '#ef4444' },
+  warning: { bg: '#fffbeb', border: '#fde68a', accent: '#f59e0b', label: 'WARNING', dot: '#f59e0b' },
+  info: { bg: '#eff6ff', border: '#bfdbfe', accent: '#3b82f6', label: 'INFO', dot: '#3b82f6' },
+};
+
+const STATUS_CONFIG = {
+  active: { bg: '#fef2f2', color: '#dc2626', label: 'Active' },
+  acknowledged: { bg: '#eff6ff', color: '#2563eb', label: 'Acknowledged' },
+  resolved: { bg: '#f0fdf4', color: '#16a34a', label: 'Resolved' },
+};
+
+function StatCard({ value, label, color }) {
+  return (
+    <div style={{
+      background: 'white',
+      borderRadius: '12px',
+      padding: '20px 22px',
+      boxShadow: 'var(--shadow-sm)',
+      flex: 1,
+      borderTop: `3px solid ${color}`,
+    }}>
+      <div style={{ fontSize: '32px', fontWeight: 800, color, letterSpacing: '-0.02em', lineHeight: 1 }}>
+        {value}
+      </div>
+      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', fontWeight: 500 }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
 export default function Alerts() {
-  const [alerts, setAlerts] = useState(initialAlerts);
+  const [alerts, setAlerts] = useState(INITIAL_ALERTS);
   const [severityFilter, setSeverityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
 
-  //Filter alerts based on selected filters
-  const filteredAlerts = alerts.filter(alert => {
-    const matchesSeverity = severityFilter === 'all' || alert.severity === severityFilter;
-    const matchesStatus = statusFilter === 'all' || alert.status === statusFilter;
-    return matchesSeverity && matchesStatus;
+  const filtered = alerts.filter(a => {
+    const s = severityFilter === 'all' || a.severity === severityFilter;
+    const st = statusFilter === 'all' || a.status === statusFilter;
+    return s && st;
   });
 
-  //Calculate statistics
   const stats = {
-    activeCritical: alerts.filter(a => a.status === 'active' && a.severity === 'critical').length,
-    activeWarnings: alerts.filter(a => a.status === 'active' && a.severity === 'warning').length,
-    resolvedToday: alerts.filter(a => a.status === 'resolved' && a.time.includes('hours')).length,
-    total: alerts.length
+    critical: alerts.filter(a => a.status === 'active' && a.severity === 'critical').length,
+    warnings: alerts.filter(a => a.status === 'active' && a.severity === 'warning').length,
+    resolved: alerts.filter(a => a.status === 'resolved').length,
+    total: alerts.length,
   };
 
-  //Handle acknowledging an alert
-  const handleAcknowledge = (alertId) => {
-    setAlerts(alerts.map(alert => 
-      alert.id === alertId ? { ...alert, status: 'acknowledged' } : alert
-    ));
-  };
+  const acknowledge = (id) => setAlerts(a => a.map(x => x.id === id ? { ...x, status: 'acknowledged' } : x));
+  const resolve = (id) => setAlerts(a => a.map(x => x.id === id ? { ...x, status: 'resolved' } : x));
+  const dismiss = (id) => setAlerts(a => a.filter(x => x.id !== id));
 
-  //Handle resolving an alert
-  const handleResolve = (alertId) => {
-    setAlerts(alerts.map(alert => 
-      alert.id === alertId ? { ...alert, status: 'resolved' } : alert
-    ));
-  };
-
-  //Handle dismissing an alert
-  const handleDismiss = (alertId) => {
-    setAlerts(alerts.filter(alert => alert.id !== alertId));
-  };
-
-  //Get alert styling based on severity
-  const getAlertStyle = (severity) => {
-    switch(severity) {
-      case 'critical':
-        return {
-          border: '1px solid #fee2e2',
-          borderLeft: '4px solid #ef4444',
-          background: 'white'
-        };
-      case 'warning':
-        return {
-          border: '1px solid #fef3c7',
-          borderLeft: '4px solid #f59e0b',
-          background: 'white'
-        };
-      case 'info':
-        return {
-          border: '1px solid #dbeafe',
-          borderLeft: '4px solid #6366f1',
-          background: 'white'
-        };
-      default:
-        return {
-          border: '1px solid #e5e7eb',
-          borderLeft: '4px solid #6b7280',
-          background: 'white'
-        };
-    }
-  };
-
-  //Get badge styling based on status
-  const getBadgeStyle = (status) => {
-    switch(status) {
-      case 'active':
-        return {
-          background: '#fee2e2',
-          color: '#dc2626'
-        };
-      case 'acknowledged':
-        return {
-          background: '#dbeafe',
-          color: '#6366f1'
-        };
-      case 'resolved':
-        return {
-          background: '#dcfce7',
-          color: '#16a34a'
-        };
-      default:
-        return {
-          background: '#f3f4f6',
-          color: '#6b7280'
-        };
-    }
-  };
+  const FilterBtn = ({ value, label, color, active, onClick }) => (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '6px 14px',
+        borderRadius: '8px',
+        border: active ? 'none' : '1.5px solid var(--border)',
+        background: active ? (color || 'var(--navy)') : 'white',
+        color: active ? 'white' : 'var(--text-secondary)',
+        fontSize: '12px',
+        fontWeight: 600,
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+      }}
+    >
+      {label}
+    </button>
+  );
 
   return (
-    <div style={{ display: 'flex' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
       <Navigation />
-      
-      <main style={{ flex: 1, padding: '40px', background: '#f8fafc' }}>
-        <div style={{ marginBottom: '30px' }}>
-          <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '5px' }}>
-            Alerts
+
+      <main style={{ flex: 1, overflow: 'auto' }}>
+        {/* Header */}
+        <div style={{ padding: '28px 32px 0', marginBottom: '24px' }}>
+          <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+            Activity
           </h1>
-          <p style={{ fontSize: '14px', color: '#94a3b8' }}>
-            {filteredAlerts.length} {filteredAlerts.length === 1 ? 'alert' : 'alerts'} found
-          </p>
-        </div>
-        
-        {/* Statistics Cards */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(4, 1fr)', 
-          gap: '20px',
-          marginBottom: '30px'
-        }}>
-          <div style={{ background: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ color: '#64748b', fontSize: '14px', marginBottom: '10px' }}>
-              Active Critical
-            </div>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#ef4444' }}>
-              {stats.activeCritical}
-            </div>
-          </div>
-          
-          <div style={{ background: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ color: '#64748b', fontSize: '14px', marginBottom: '10px' }}>
-              Active Warnings
-            </div>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#f59e0b' }}>
-              {stats.activeWarnings}
-            </div>
-          </div>
-          
-          <div style={{ background: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ color: '#64748b', fontSize: '14px', marginBottom: '10px' }}>
-              Resolved Today
-            </div>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#22c55e' }}>
-              {stats.resolvedToday}
-            </div>
-          </div>
-          
-          <div style={{ background: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ color: '#64748b', fontSize: '14px', marginBottom: '10px' }}>
-              Total Alerts
-            </div>
-            <div style={{ fontSize: '32px', fontWeight: 'bold' }}>
-              {stats.total}
-            </div>
+          <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '3px' }}>
+            {filtered.length} {filtered.length === 1 ? 'alert' : 'alerts'} found
           </div>
         </div>
-        
-        {/* Filter Buttons */}
-        <div style={{ 
-          background: 'white', 
-          padding: '20px', 
-          borderRadius: '8px',
-          marginBottom: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            gap: '10px', 
-            marginBottom: '15px',
+
+        <div style={{ padding: '0 32px 32px' }}>
+          {/* Stat cards */}
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
+            <StatCard value={stats.critical} label="Active Critical" color="#ef4444" />
+            <StatCard value={stats.warnings} label="Active Warnings" color="#f59e0b" />
+            <StatCard value={stats.resolved} label="Resolved" color="#22c55e" />
+            <StatCard value={stats.total} label="Total Alerts" color="var(--navy)" />
+          </div>
+
+          {/* Filters */}
+          <div style={{
+            background: 'white',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            boxShadow: 'var(--shadow-sm)',
+            marginBottom: '20px',
+            display: 'flex',
+            gap: '8px',
             flexWrap: 'wrap',
-            alignItems: 'center'
+            alignItems: 'center',
           }}>
-            <span style={{ fontWeight: '500', fontSize: '14px', color: '#64748b', marginRight: '10px' }}>
-              Severity:
-            </span>
-            <button 
-              onClick={() => setSeverityFilter('all')}
-              style={{ 
-                padding: '8px 16px', 
-                background: severityFilter === 'all' ? '#f59e0b' : 'white',
-                color: severityFilter === 'all' ? 'white' : '#334155',
-                border: severityFilter === 'all' ? 'none' : '1px solid #e2e8f0',
-                borderRadius: '4px',
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              All
-            </button>
-            <button 
-              onClick={() => setSeverityFilter('critical')}
-              style={{ 
-                padding: '8px 16px', 
-                background: severityFilter === 'critical' ? '#ef4444' : 'white',
-                color: severityFilter === 'critical' ? 'white' : '#334155',
-                border: severityFilter === 'critical' ? 'none' : '1px solid #e2e8f0',
-                borderRadius: '4px',
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              Critical
-            </button>
-            <button 
-              onClick={() => setSeverityFilter('warning')}
-              style={{ 
-                padding: '8px 16px', 
-                background: severityFilter === 'warning' ? '#f59e0b' : 'white',
-                color: severityFilter === 'warning' ? 'white' : '#334155',
-                border: severityFilter === 'warning' ? 'none' : '1px solid #e2e8f0',
-                borderRadius: '4px',
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              Warning
-            </button>
-            <button 
-              onClick={() => setSeverityFilter('info')}
-              style={{ 
-                padding: '8px 16px', 
-                background: severityFilter === 'info' ? '#6366f1' : 'white',
-                color: severityFilter === 'info' ? 'white' : '#334155',
-                border: severityFilter === 'info' ? 'none' : '1px solid #e2e8f0',
-                borderRadius: '4px',
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              Info
-            </button>
-            
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <span style={{ fontWeight: '500', fontSize: '14px', color: '#64748b', marginRight: '10px' }}>
-                Status:
-              </span>
-              <button 
-                onClick={() => setStatusFilter('active')}
-                style={{ 
-                  padding: '8px 16px', 
-                  background: statusFilter === 'active' ? '#f59e0b' : 'white',
-                  color: statusFilter === 'active' ? 'white' : '#334155',
-                  border: statusFilter === 'active' ? 'none' : '1px solid #e2e8f0',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                Active
-              </button>
-              <button 
-                onClick={() => setStatusFilter('acknowledged')}
-                style={{ 
-                  padding: '8px 16px', 
-                  background: statusFilter === 'acknowledged' ? '#f59e0b' : 'white',
-                  color: statusFilter === 'acknowledged' ? 'white' : '#334155',
-                  border: statusFilter === 'acknowledged' ? 'none' : '1px solid #e2e8f0',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                Acknowledged
-              </button>
-              <button 
-                onClick={() => setStatusFilter('resolved')}
-                style={{ 
-                  padding: '8px 16px', 
-                  background: statusFilter === 'resolved' ? '#f59e0b' : 'white',
-                  color: statusFilter === 'resolved' ? 'white' : '#334155',
-                  border: statusFilter === 'resolved' ? 'none' : '1px solid #e2e8f0',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                Resolved
-              </button>
-              <button 
-                onClick={() => setStatusFilter('all')}
-                style={{ 
-                  padding: '8px 16px', 
-                  background: statusFilter === 'all' ? '#f59e0b' : 'white',
-                  color: statusFilter === 'all' ? 'white' : '#334155',
-                  border: statusFilter === 'all' ? 'none' : '1px solid #e2e8f0',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                All
-              </button>
-            </div>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: '4px' }}>Severity:</span>
+            <FilterBtn value="all" label="All" active={severityFilter === 'all'} onClick={() => setSeverityFilter('all')} />
+            <FilterBtn value="critical" label="Critical" color="#ef4444" active={severityFilter === 'critical'} onClick={() => setSeverityFilter('critical')} />
+            <FilterBtn value="warning" label="Warning" color="#f59e0b" active={severityFilter === 'warning'} onClick={() => setSeverityFilter('warning')} />
+            <FilterBtn value="info" label="Info" color="#3b82f6" active={severityFilter === 'info'} onClick={() => setSeverityFilter('info')} />
+
+            <div style={{ height: '24px', width: '1px', background: 'var(--border)', margin: '0 4px' }} />
+
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: '4px' }}>Status:</span>
+            <FilterBtn value="active" label="Active" active={statusFilter === 'active'} onClick={() => setStatusFilter('active')} />
+            <FilterBtn value="acknowledged" label="Acknowledged" active={statusFilter === 'acknowledged'} onClick={() => setStatusFilter('acknowledged')} />
+            <FilterBtn value="resolved" label="Resolved" active={statusFilter === 'resolved'} onClick={() => setStatusFilter('resolved')} />
+            <FilterBtn value="all" label="All" active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
           </div>
-        </div>
-        
-        {/* Alerts List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          {filteredAlerts.length === 0 ? (
-            <div style={{ 
-              background: 'white', 
-              padding: '40px', 
-              borderRadius: '8px',
-              textAlign: 'center',
-              color: '#94a3b8'
-            }}>
-              No alerts found matching the selected filters.
-            </div>
-          ) : (
-            filteredAlerts.map(alert => (
-              <div 
-                key={alert.id}
-                style={{ 
-                  ...getAlertStyle(alert.severity),
-                  padding: '20px', 
-                  borderRadius: '8px',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                  transition: 'all 0.3s'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ 
-                      display: 'inline-block',
-                      padding: '4px 12px',
-                      ...getBadgeStyle(alert.status),
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: '500',
-                      marginBottom: '10px',
-                      textTransform: 'capitalize'
-                    }}>
-                      {alert.status}
-                    </div>
-                    <h3 style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '16px' }}>
-                      {alert.title}
-                    </h3>
-                    <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '10px', lineHeight: '1.5' }}>
-                      {alert.description}
-                    </p>
-                    <div style={{ fontSize: '13px', color: '#94a3b8' }}>
-                      Time: {alert.time}  •  Degree: {alert.temperature}  •  Alert: {alert.type}
-                    </div>
-                  </div>
-                  
-                  {/* Action buttons */}
-                  <div style={{ display: 'flex', gap: '10px', marginLeft: '20px' }}>
-                    {alert.status === 'active' && (
-                      <>
-                        <button
-                          onClick={() => handleAcknowledge(alert.id)}
-                          style={{
-                            padding: '8px 16px',
-                            background: '#3b82f6',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            transition: 'background 0.2s'
-                          }}
-                          onMouseOver={(e) => e.target.style.background = '#2563eb'}
-                          onMouseOut={(e) => e.target.style.background = '#3b82f6'}
-                        >
-                          Acknowledge
-                        </button>
-                        <button
-                          onClick={() => handleResolve(alert.id)}
-                          style={{
-                            padding: '8px 16px',
-                            background: '#22c55e',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            transition: 'background 0.2s'
-                          }}
-                          onMouseOver={(e) => e.target.style.background = '#16a34a'}
-                          onMouseOut={(e) => e.target.style.background = '#22c55e'}
-                        >
-                          Resolve
-                        </button>
-                      </>
-                    )}
-                    
-                    {alert.status === 'acknowledged' && (
-                      <button
-                        onClick={() => handleResolve(alert.id)}
-                        style={{
-                          padding: '8px 16px',
-                          background: '#22c55e',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          fontSize: '13px',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                          transition: 'background 0.2s'
-                        }}
-                        onMouseOver={(e) => e.target.style.background = '#16a34a'}
-                        onMouseOut={(e) => e.target.style.background = '#22c55e'}
-                      >
-                        Resolve
-                      </button>
-                    )}
-                    
-                    <button
-                      onClick={() => handleDismiss(alert.id)}
-                      style={{
-                        padding: '8px 16px',
-                        background: 'white',
-                        color: '#ef4444',
-                        border: '1px solid #ef4444',
-                        borderRadius: '4px',
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseOver={(e) => {
-                        e.target.style.background = '#ef4444';
-                        e.target.style.color = 'white';
-                      }}
-                      onMouseOut={(e) => {
-                        e.target.style.background = 'white';
-                        e.target.style.color = '#ef4444';
-                      }}
-                    >
-                      Dismiss
-                    </button>
-                  </div>
+
+          {/* Alert list */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {filtered.length === 0 ? (
+              <div style={{
+                background: 'white',
+                borderRadius: '12px',
+                padding: '60px 24px',
+                textAlign: 'center',
+                boxShadow: 'var(--shadow-sm)',
+              }}>
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔕</div>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-secondary)' }}>No alerts found</div>
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Try adjusting your filters to see more results.
                 </div>
               </div>
-            ))
-          )}
+            ) : (
+              filtered.map((alert) => {
+                const sc = SEVERITY_CONFIG[alert.severity];
+                const stc = STATUS_CONFIG[alert.status];
+                return (
+                  <div
+                    key={alert.id}
+                    style={{
+                      background: 'white',
+                      borderRadius: '12px',
+                      boxShadow: 'var(--shadow-sm)',
+                      borderLeft: `4px solid ${sc.accent}`,
+                      overflow: 'hidden',
+                      animation: 'fadeIn 0.3s ease',
+                    }}
+                  >
+                    <div style={{ padding: '18px 20px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+                      {/* Left: dot */}
+                      <div style={{
+                        width: '10px', height: '10px', borderRadius: '50%',
+                        background: sc.accent,
+                        marginTop: '5px',
+                        flexShrink: 0,
+                        boxShadow: `0 0 0 3px ${sc.accent}28`,
+                      }} />
+
+                      {/* Content */}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap' }}>
+                          <span style={{
+                            fontSize: '10px', fontWeight: 800, letterSpacing: '0.06em',
+                            background: `${sc.accent}18`, color: sc.accent,
+                            padding: '2px 8px', borderRadius: '20px',
+                          }}>
+                            {sc.label}
+                          </span>
+                          <span style={{
+                            fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em',
+                            background: stc.bg, color: stc.color,
+                            padding: '2px 8px', borderRadius: '20px',
+                          }}>
+                            {stc.label}
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '5px' }}>
+                          {alert.title}
+                        </div>
+                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '10px' }}>
+                          {alert.description}
+                        </div>
+                        <div style={{ display: 'flex', gap: '16px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                            {alert.time}
+                          </span>
+                          <span>🌡 {alert.temperature}</span>
+                          <span>⚠ {alert.type}</span>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div style={{ display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
+                        {alert.status === 'active' && (
+                          <>
+                            <button
+                              onClick={() => acknowledge(alert.id)}
+                              style={{
+                                padding: '7px 14px',
+                                background: '#eff6ff',
+                                color: '#2563eb',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Acknowledge
+                            </button>
+                            <button
+                              onClick={() => resolve(alert.id)}
+                              style={{
+                                padding: '7px 14px',
+                                background: '#f0fdf4',
+                                color: '#16a34a',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Resolve
+                            </button>
+                          </>
+                        )}
+                        {alert.status === 'acknowledged' && (
+                          <button
+                            onClick={() => resolve(alert.id)}
+                            style={{
+                              padding: '7px 14px',
+                              background: '#f0fdf4',
+                              color: '#16a34a',
+                              border: 'none',
+                              borderRadius: '8px',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Resolve
+                          </button>
+                        )}
+                        <button
+                          onClick={() => dismiss(alert.id)}
+                          style={{
+                            padding: '7px',
+                            background: 'transparent',
+                            color: 'var(--text-muted)',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                          title="Dismiss"
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#ef4444'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       </main>
     </div>
