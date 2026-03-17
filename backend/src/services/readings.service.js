@@ -3,101 +3,23 @@
 /**
  * Readings Service
  *
- * Responsibilities:
- * - Enforce policy + validation (ids, dates, limits, ordering)
- * - Delegate ownership enforcement to repo joins (beekeeper -> hive -> device -> reading)
+ * Responsibilities
+ * - Enforce policy and validation for ids, dates, limits, and ordering
+ * - Delegate ownership enforcement to repository joins across beekeeper, hive, device, reading
  *
- * Notes:
- * - Timestamp-based only: callers provide explicit since/until
- * - Read-only: telemetry is immutable
+ * Notes
+ * - Timestamp-based only and callers provide explicit since and optional until
+ * - Read-only since telemetry is immutable
  */
 
 const readingRepo = require("../db/readings.db.js");
 
 /* ========================================================================== */
-/* Errors + Validation                                                         */
+/* Config                                                                      */
 /* ========================================================================== */
 
-function badRequest(message) {
-  const err = new Error(message);
-  err.status = 400;
-  err.code = "VALIDATION_ERROR";
-  return err;
-}
-
-function requirePositiveInt(name, value) {
-  const n = Number(value);
-  if (!Number.isInteger(n) || n <= 0) {
-    throw badRequest(`Invalid ${name}`);
-  }
-  return n;
-}
-
-/**
- * Default to DESC (most recent first) for time-series.
- */
-function normalizeOrder(order) {
-  if (order === undefined || order === null || order === "") return "desc";
-
-  const o = String(order).toLowerCase().trim();
-  if (o !== "asc" && o !== "desc") {
-    throw badRequest("Invalid order");
-  }
-
-  return o;
-}
-
-/**
- * Normalize limit with defaults and a hard max.
- */
-function normalizeLimit(limit, { max, defaultValue }) {
-  if (limit === undefined || limit === null || limit === "")
-    return defaultValue;
-
-  const n = Number(limit);
-  if (!Number.isInteger(n) || n <= 0) {
-    throw badRequest("Invalid limit");
-  }
-
-  return Math.min(n, max);
-}
-
-/**
- * Parse a required date-like input into a Date.
- * Accepts ISO strings (recommended) and Date objects.
- */
-function parseDateLike(name, value) {
-  if (value === undefined || value === null || value === "") {
-    throw badRequest(`Invalid ${name}`);
-  }
-
-  const d = value instanceof Date ? value : new Date(String(value));
-  if (Number.isNaN(d.getTime())) {
-    throw badRequest(`Invalid ${name}`);
-  }
-
-  return d;
-}
-
-/**
- * Parse optional until and enforce until > since (exclusive upper bound).
- */
-function parseOptionalUntil(sinceDate, until) {
-  if (until === undefined || until === null || until === "") return null;
-
-  const u = parseDateLike("until", until);
-  if (u.getTime() <= sinceDate.getTime()) {
-    throw badRequest("Invalid until");
-  }
-
-  return u;
-}
-
-/**
- * Reasonable defaults:
- * - default 500 keeps responses snappy
- * - max 10000 supports large exports when requested
- */
+// Default 500 keeps responses snappy
+// Max 10000 supports larger exports when requested
 const HIVE_READ_LIMIT = Object.freeze({
   defaultValue: 500,
   max: 10000,
@@ -107,9 +29,6 @@ const HIVE_READ_LIMIT = Object.freeze({
 /* Public API                                                                  */
 /* ========================================================================== */
 
-/**
- * Hive time-series since a timestamp (optional until).
- */
 exports.getHiveReadingsSince = async ({
   beekeeperId,
   hiveId,
@@ -137,9 +56,6 @@ exports.getHiveReadingsSince = async ({
   });
 };
 
-/**
- * Latest reading across the hive.
- */
 exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
   const bkId = requirePositiveInt("beekeeperId", beekeeperId);
   const hId = requirePositiveInt("hiveId", hiveId);
@@ -150,9 +66,6 @@ exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
   });
 };
 
-/**
- * Daily aggregates since a timestamp (stub).
- */
 exports.getHiveDailySince = async ({ beekeeperId, hiveId, since, until }) => {
   requirePositiveInt("beekeeperId", beekeeperId);
   requirePositiveInt("hiveId", hiveId);
@@ -160,5 +73,79 @@ exports.getHiveDailySince = async ({ beekeeperId, hiveId, since, until }) => {
   const sinceDate = parseDateLike("since", since);
   parseOptionalUntil(sinceDate, until);
 
-  return readingRepo.getHiveDailySince(); // throws NOT_IMPLEMENTED
+  return readingRepo.getHiveDailySince(); // expected to throw NOT_IMPLEMENTED
 };
+
+/* ========================================================================== */
+/* Validation                                                                  */
+/* ========================================================================== */
+
+function requirePositiveInt(name, value) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw badRequest(`Invalid ${name}`);
+  }
+  return n;
+}
+
+function parseDateLike(name, value) {
+  if (value === undefined || value === null || value === "") {
+    throw badRequest(`Invalid ${name}`);
+  }
+
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(d.getTime())) {
+    throw badRequest(`Invalid ${name}`);
+  }
+
+  return d;
+}
+
+function parseOptionalUntil(sinceDate, until) {
+  if (until === undefined || until === null || until === "") return null;
+
+  const u = parseDateLike("until", until);
+  if (u.getTime() <= sinceDate.getTime()) {
+    throw badRequest("Invalid until");
+  }
+
+  return u;
+}
+
+function normalizeLimit(limit, { max, defaultValue }) {
+  if (limit === undefined || limit === null || limit === "") return defaultValue;
+
+  const n = Number(limit);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw badRequest("Invalid limit");
+  }
+
+  return Math.min(n, max);
+}
+
+function normalizeOrder(order) {
+  // Default to desc for time-series
+  if (order === undefined || order === null || order === "") return "desc";
+
+  const o = String(order).toLowerCase().trim();
+  if (o !== "asc" && o !== "desc") {
+    throw badRequest("Invalid order");
+  }
+
+  return o;
+}
+
+/* ========================================================================== */
+/* Errors                                                                      */
+/* ========================================================================== */
+
+function httpError(status, code, message) {
+  const err = new Error(message);
+  err.status = status;
+  err.code = code;
+  return err;
+}
+
+function badRequest(message) {
+  return httpError(400, "VALIDATION_ERROR", message);
+}

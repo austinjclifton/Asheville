@@ -3,30 +3,33 @@
 /**
  * Hives Repository (PostgreSQL)
  * Table: hive
- *
- * Responsibilities:
- * - SQL only (no business rules)
- * - Parameterized queries only
- * - Enforce ownership via beekeeper_id scoping
  */
 
 const { query } = require("./pool");
 
+/* ========================================================================== */
+/* Inserts                                                                     */
+/* ========================================================================== */
+
 /**
  * Create a hive row.
  */
-exports.create = async ({ beekeeperId, name, notes }) => {
+exports.create = async ({ beekeeperId, name, notes, locationId }) => {
   const rows = await query(
     `
-    INSERT INTO hive (beekeeper_id, name, notes)
-    VALUES ($1, $2, $3)
+    INSERT INTO hive (beekeeper_id, name, notes, location_id)
+    VALUES ($1, $2, $3, $4)
     RETURNING *
     `,
-    [beekeeperId, name, notes ?? null]
+    [beekeeperId, name, notes ?? null, locationId ?? null],
   );
 
   return rows[0] ?? null;
 };
+
+/* ========================================================================== */
+/* Reads                                                                       */
+/* ========================================================================== */
 
 /**
  * List hives for a beekeeper (newest first).
@@ -39,7 +42,7 @@ exports.listByBeekeeper = async ({ beekeeperId }) => {
     WHERE beekeeper_id = $1
     ORDER BY created_at DESC, id DESC
     `,
-    [beekeeperId]
+    [beekeeperId],
   );
 };
 
@@ -55,14 +58,15 @@ exports.findByIdScoped = async ({ beekeeperId, hiveId }) => {
       AND beekeeper_id = $2
     LIMIT 1
     `,
-    [hiveId, beekeeperId]
+    [hiveId, beekeeperId],
   );
 
   return rows[0] ?? null;
 };
 
 /**
- * Check whether a hive exists and is owned by the beekeeper.
+ * Fast existence check for hive ownership scope.
+ * (Used by devices.service.js; avoids SELECT * and prevents leaking fields.)
  */
 exports.existsScoped = async ({ beekeeperId, hiveId }) => {
   const rows = await query(
@@ -73,34 +77,48 @@ exports.existsScoped = async ({ beekeeperId, hiveId }) => {
       AND beekeeper_id = $2
     LIMIT 1
     `,
-    [hiveId, beekeeperId]
+    [hiveId, beekeeperId],
   );
 
   return rows.length > 0;
 };
 
 /**
- * Count hives for a beekeeper.
+ * Resolve a hive's location_id (scoped to beekeeper).
+ * Returns: { location_id } | null
  */
-exports.countByBeekeeper = async ({ beekeeperId }) => {
+exports.getLocationIdForHive = async ({ beekeeperId, hiveId }) => {
   const rows = await query(
     `
-    SELECT COUNT(*)::int AS count
+    SELECT location_id
     FROM hive
-    WHERE beekeeper_id = $1
+    WHERE id = $1
+      AND beekeeper_id = $2
+    LIMIT 1
     `,
-    [beekeeperId]
+    [hiveId, beekeeperId],
   );
 
-  return rows[0]?.count ?? 0;
+  return rows[0] ?? null;
 };
+
+/* ========================================================================== */
+/* Updates                                                                     */
+/* ========================================================================== */
 
 /**
  * Patch hive fields (scoped).
  * - undefined fields are not changed
  * - notes may be null to clear
+ * - locationId may be null to clear
  */
-exports.updateScoped = async ({ beekeeperId, hiveId, name, notes }) => {
+exports.updateScoped = async ({
+  beekeeperId,
+  hiveId,
+  name,
+  notes,
+  locationId,
+}) => {
   const set = [];
   const values = [];
   let i = 1;
@@ -115,7 +133,11 @@ exports.updateScoped = async ({ beekeeperId, hiveId, name, notes }) => {
     values.push(notes);
   }
 
-  // No-op PATCH: return current row (still scoped).
+  if (locationId !== undefined) {
+    set.push(`location_id = $${i++}`);
+    values.push(locationId);
+  }
+
   if (set.length === 0) {
     return exports.findByIdScoped({ beekeeperId, hiveId });
   }
@@ -130,11 +152,15 @@ exports.updateScoped = async ({ beekeeperId, hiveId, name, notes }) => {
       AND beekeeper_id = $${i++}
     RETURNING *
     `,
-    values
+    values,
   );
 
   return rows[0] ?? null;
 };
+
+/* ========================================================================== */
+/* Deletes                                                                     */
+/* ========================================================================== */
 
 /**
  * Delete a hive by id (scoped).
@@ -148,7 +174,7 @@ exports.removeScoped = async ({ beekeeperId, hiveId }) => {
       AND beekeeper_id = $2
     RETURNING id
     `,
-    [hiveId, beekeeperId]
+    [hiveId, beekeeperId],
   );
 
   return rows.length > 0;

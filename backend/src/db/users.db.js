@@ -3,17 +3,13 @@
 /**
  * Users Repository
  * Table: beekeeper
- *
- * Responsibilities:
- * - Persist and retrieve beekeeper records
- * - Control which columns are exposed per use-case
- *
- * Notes:
- * - Knows SQL + table shape
- * - Does not enforce business rules
  */
 
 const { query } = require("./pool");
+
+/* ========================================================================== */
+/* Column sets                                                                 */
+/* ========================================================================== */
 
 const BASE_COLUMNS = `
   id,
@@ -29,12 +25,15 @@ const AUTH_COLUMNS = `
   password_hash
 `;
 
-// Only allow known-safe columns to be used in dynamic lookup SQL.
 const LOOKUP_COLUMN = Object.freeze({
   id: "id",
   email: "email",
   username: "username",
 });
+
+/* ========================================================================== */
+/* Private helpers                                                             */
+/* ========================================================================== */
 
 /**
  * Find a single beekeeper row by a whitelisted column.
@@ -54,41 +53,53 @@ async function findOneBy({ columnKey, value, includeAuth = false }) {
     WHERE ${column} = $1
     LIMIT 1
     `,
-    [value]
+    [value],
   );
 
   return rows[0] ?? null;
 }
 
+/* ========================================================================== */
+/* Reads                                                                       */
+/* ========================================================================== */
+
 /**
  * Lookups (public projection).
  */
-exports.findById = async (id) => {
+exports.findById = async ({ id }) => {
   return findOneBy({ columnKey: "id", value: id });
 };
 
-exports.findByEmail = async (email) => {
+exports.findByEmail = async ({ email }) => {
   return findOneBy({ columnKey: "email", value: email });
 };
 
-exports.findByUsername = async (username) => {
+exports.findByUsername = async ({ username }) => {
   return findOneBy({ columnKey: "username", value: username });
 };
 
 /**
  * Lookups (auth projection).
  */
-exports.findAuthById = async (id) => {
+exports.findAuthById = async ({ id }) => {
   return findOneBy({ columnKey: "id", value: id, includeAuth: true });
 };
 
-exports.findAuthByEmail = async (email) => {
+exports.findAuthByEmail = async ({ email }) => {
   return findOneBy({ columnKey: "email", value: email, includeAuth: true });
 };
 
-exports.findAuthByUsername = async (username) => {
-  return findOneBy({ columnKey: "username", value: username, includeAuth: true });
+exports.findAuthByUsername = async ({ username }) => {
+  return findOneBy({
+    columnKey: "username",
+    value: username,
+    includeAuth: true,
+  });
 };
+
+/* ========================================================================== */
+/* Writes                                                                      */
+/* ========================================================================== */
 
 /**
  * Create a new beekeeper.
@@ -100,7 +111,7 @@ exports.create = async ({ username, email, passwordHash }) => {
     VALUES ($1, $2, $3)
     RETURNING ${BASE_COLUMNS}
     `,
-    [username, email, passwordHash]
+    [username, email, passwordHash],
   );
 
   return rows[0] ?? null;
@@ -110,7 +121,7 @@ exports.create = async ({ username, email, passwordHash }) => {
  * Update password hash for a beekeeper.
  * Returns true if a row was updated.
  */
-exports.updatePasswordHash = async (id, passwordHash) => {
+exports.updatePasswordHash = async ({ id, passwordHash }) => {
   const rows = await query(
     `
     UPDATE beekeeper
@@ -119,7 +130,7 @@ exports.updatePasswordHash = async (id, passwordHash) => {
     WHERE id = $1
     RETURNING id
     `,
-    [id, passwordHash]
+    [id, passwordHash],
   );
 
   return rows.length === 1;
@@ -129,14 +140,14 @@ exports.updatePasswordHash = async (id, passwordHash) => {
  * Delete a beekeeper by id.
  * Returns true if a row was deleted.
  */
-exports.deleteById = async (id) => {
+exports.deleteById = async ({ id }) => {
   const rows = await query(
     `
     DELETE FROM beekeeper
     WHERE id = $1
     RETURNING id
     `,
-    [id]
+    [id],
   );
 
   return rows.length === 1;

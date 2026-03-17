@@ -1,57 +1,54 @@
 "use strict";
 
-/**
- * Ingest Controller
- *
- * Responsibilities:
- * - HTTP boundary only (Express req/res)
- * - Minimal required-field presence checks
- * - Delegate validation/policy to service layer
- */
-
 const ingestService = require("../services/ingest.service.js");
 
-/* ========================================================================== */
-/* Helpers                                                                     */
-/* ========================================================================== */
-
-function safeBody(req) {
-  return req.body ?? {};
-}
-
-function badRequest(message) {
-  const err = new Error(message);
-  err.status = 400;
-  return err;
-}
-
-/* ========================================================================== */
-/* Handlers                                                                    */
-/* ========================================================================== */
-
 /**
- * POST /api/ingest/readings
- * Accept telemetry payload from a device.
+ * POST /ingest/readings
+ *
+ * Header (handled by middleware):
+ * - x-ingest-token: <token>
+ *
+ * Body:
+ * - { deviceId, temperature, rssi }
+ *
+ * Rules:
+ * - deviceId, temperature, rssi are required
+ * - recordedAt is NOT accepted from clients; server computes bucket_at
+ * - If a reading already exists for (deviceId, current 10-minute bucket) -> 409
  */
 exports.create = async (req, res, next) => {
   try {
-    const body = safeBody(req);
+    const payload = normalizePayload(req.body);
 
-    // Minimal presence checks only (service handles types/ranges).
-    if (body.deviceId === undefined) throw badRequest("deviceId is required");
-    if (body.recordedAt === undefined) throw badRequest("recordedAt is required");
-    if (body.temperatureF === undefined) throw badRequest("temperatureF is required");
+    const deviceId = payload.deviceId;
+    const temperature = payload.temperature ?? payload.temp;
+    const rssi = payload.rssi ?? payload.signalStrength ?? payload.rssiDbm;
 
-    await ingestService.createReading({
-      deviceId: body.deviceId,               // pass-through
-      recordedAt: body.recordedAt,           // pass-through
-      temperatureF: body.temperatureF,       // pass-through
-      batteryVoltage: body.batteryVoltage ?? null,
-      signalStrength: body.signalStrength ?? null,
+    const result = await ingestService.createReading({
+      deviceId,
+      temperature,
+      rssi,
     });
 
-    return res.status(201).json({ success: true });
+    if (!result.inserted) {
+      return res.status(409).json({
+        success: false,
+        inserted: false,
+        error: "Reading already exists for this 10-minute bucket",
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      inserted: true,
+      reading: result.reading ?? undefined,
+    });
   } catch (err) {
     return next(err);
   }
 };
+
+function normalizePayload(body) {
+  const b = body ?? {};
+  return b.payload ?? b;
+}

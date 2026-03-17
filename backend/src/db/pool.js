@@ -17,18 +17,42 @@
 
 const { Pool } = require("pg");
 
+/* ========================================================================== */
+/* Config                                                                      */
+/* ========================================================================== */
+
+function requireEnv(name) {
+  const v = process.env[name];
+  if (v === undefined || v === null || String(v).trim() === "") {
+    throw new Error(`Missing required env var: ${name}`);
+  }
+  return v;
+}
+
+function parsePort(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  const i = Math.floor(n);
+  if (i <= 0 || i > 65535) return fallback;
+  return i;
+}
+
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT) || 5432,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
+  host: requireEnv("DB_HOST"),
+  port: parsePort(process.env.DB_PORT, 5432),
+  user: requireEnv("DB_USER"),
+  password: requireEnv("DB_PASSWORD"),
+  database: requireEnv("DB_NAME"),
 
   // Production-safe defaults (tune per deployment)
   max: 10,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 });
+
+/* ========================================================================== */
+/* Public API                                                                  */
+/* ========================================================================== */
 
 /**
  * Run a query and return rows (repositories should use this).
@@ -46,16 +70,49 @@ async function getClient() {
 }
 
 /**
- * End the pool once (used for process shutdown hygiene).
+ * Run a unit of work inside a transaction.
+ * The callback receives a pg client with `query`.
  */
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) {
+      // ignore rollback failures; original error is more important
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/* ========================================================================== */
+/* Shutdown hygiene                                                            */
+/* ========================================================================== */
+
 let poolEnded = false;
+
 async function safeEndPool() {
   if (poolEnded) return;
   poolEnded = true;
   await pool.end();
 }
 
-process.on("SIGTERM", safeEndPool);
-process.on("SIGINT", safeEndPool);
+function onSignal(signal) {
+  return () => {
+    safeEndPool()
+      .then(() => process.exit(0))
+      .catch(() => process.exit(1));
+  };
+}
 
-module.exports = { pool, query, getClient };
+process.on("SIGTERM", onSignal("SIGTERM"));
+process.on("SIGINT", onSignal("SIGINT"));
+
+module.exports = { pool, query, getClient, withTransaction };
