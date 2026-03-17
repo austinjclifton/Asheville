@@ -45,7 +45,7 @@ exports.createReading = async ({ deviceId, temperature, rssi }) => {
   //const bucketAt = floorToTenMinutes(new Date());
   const bucketAt = new Date().toISOString();
 
-  const temp = requireIntString("temperature", temperature);
+  const temp = requireFloatString("temperature", temperature);
   if (!(temp > TEMP_MIN && temp < TEMP_MAX)) {
     throw badRequest("temperature out of valid range");
   }
@@ -117,6 +117,24 @@ function requireIntString(field, value) {
 
   const n = Number.parseInt(trimmed, 10);
   if (!Number.isSafeInteger(n)) {
+    throw badRequest(`${field} is out of range`);
+  }
+
+  return n;
+}
+
+function requireFloatString(field, value) {
+  if (typeof value !== "string") {
+    throw badRequest(`${field} must be a string`);
+  }
+
+  const trimmed = value.trim();
+  if (!/^-?(?:\d+|\d*\.\d+)$/.test(trimmed)) {
+    throw badRequest(`${field} must be a numeric string`);
+  }
+
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) {
     throw badRequest(`${field} is out of range`);
   }
 
