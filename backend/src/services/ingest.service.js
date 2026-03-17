@@ -39,31 +39,36 @@ const TRIGGER_EXTERNAL_ON_INGEST =
 /* ========================================================================== */
 
 exports.createReading = async ({ deviceId, temperature, rssi }) => {
-  const devId = requirePositiveInt("deviceId", deviceId);
+  const devId = requirePositiveIntString("deviceId", deviceId);
 
+  //MUST CHANGE FOR INGEST TO PROPERLY WORK WITH DEDUPE LOGIC
   //const bucketAt = floorToTenMinutes(new Date());
   const bucketAt = new Date().toISOString();
 
-  const temp = requireFiniteNumber("temperature", temperature);
+  const temp = requireIntString("temperature", temperature);
   if (!(temp > TEMP_MIN && temp < TEMP_MAX)) {
     throw badRequest("temperature out of valid range");
   }
 
-  const rssiInt = requireInteger("rssi", rssi);
+  const rssiInt = requireIntString("rssi", rssi);
   if (rssiInt < RSSI_MIN || rssiInt > RSSI_MAX) {
     throw badRequest("rssi out of valid range");
   }
 
-  const { inserted, reading } = await readingIngestRepo.createReadingDeduped10m({
-    deviceId: devId,
-    bucketAt,
-    temperatureC: temp,
-    rssiDbm: rssiInt,
-  });
+  const { inserted, reading } = await readingIngestRepo.createReadingDeduped10m(
+    {
+      deviceId: devId,
+      bucketAt,
+      temperatureC: temp,
+      rssiDbm: rssiInt,
+    },
+  );
 
   if (inserted && TRIGGER_EXTERNAL_ON_INGEST) {
     try {
-      await externalConditionsService.ingestCurrentForDevice({ deviceId: devId });
+      await externalConditionsService.ingestCurrentForDevice({
+        deviceId: devId,
+      });
     } catch (e) {
       // Intentional swallow to avoid failing ingest when external fetch fails
       console.error("External condition ingest failed:", e?.message || e);
@@ -92,27 +97,29 @@ function badRequest(message) {
 /* Validation                                                                  */
 /* ========================================================================== */
 
-function requirePositiveInt(field, value) {
-  const n = Number(value);
-  if (!Number.isInteger(n) || n <= 0) {
-    throw badRequest(`${field} must be a positive integer`);
+function requirePositiveIntString(field, value) {
+  const n = requireIntString(field, value);
+  if (n <= 0) {
+    throw badRequest(`${field} must be a positive integer string`);
   }
   return n;
 }
 
-function requireFiniteNumber(field, value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) {
-    throw badRequest(`${field} must be numeric`);
+function requireIntString(field, value) {
+  if (typeof value !== "string") {
+    throw badRequest(`${field} must be a string`);
   }
-  return n;
-}
 
-function requireInteger(field, value) {
-  const n = Number(value);
-  if (!Number.isInteger(n)) {
-    throw badRequest(`${field} must be an integer`);
+  const trimmed = value.trim();
+  if (!/^-?\d+$/.test(trimmed)) {
+    throw badRequest(`${field} must be an integer string`);
   }
+
+  const n = Number.parseInt(trimmed, 10);
+  if (!Number.isSafeInteger(n)) {
+    throw badRequest(`${field} is out of range`);
+  }
+
   return n;
 }
 
