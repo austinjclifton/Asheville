@@ -45,16 +45,6 @@ exports.createReading = async ({ deviceId, temperature, rssi }) => {
   //const bucketAt = floorToTenMinutes(new Date());
   const bucketAt = new Date().toISOString();
 
-  const temp = requireFloatString("temperature", temperature);
-  if (!(temp > TEMP_MIN && temp < TEMP_MAX)) {
-    throw badRequest("temperature out of valid range");
-  }
-
-  const rssiInt = requireIntString("rssi", rssi);
-  if (rssiInt < RSSI_MIN || rssiInt > RSSI_MAX) {
-    throw badRequest("rssi out of valid range");
-  }
-
   const { inserted, reading } = await readingIngestRepo.createReadingDeduped10m(
     {
       deviceId: devId,
