@@ -5,6 +5,7 @@ import { apiFetch } from '../api';
 
 const RANGE_HOURS = { '24H': 24, '7D': 24 * 7, '30D': 24 * 30 };
 
+// MOCK → NOTE: No /api/alerts endpoint exists; kept as static UI placeholder
 const SYSTEM_EVENTS = [
   { type: 'warning', time: '01:29 PM', message: 'Internal temperature dropped below 33°C momentarily.' },
   { type: 'info',    time: '05:29 AM', message: 'External temperature spike detected. Hive compensation active.' },
@@ -17,22 +18,6 @@ const EVENT_STYLES = {
   info:    { bg: '#f0f9ff', border: '#bae6fd', labelBg: '#e0f2fe', labelColor: '#0284c7', text: 'INFO' },
   system:  { bg: '#f0fdf4', border: '#bbf7d0', labelBg: '#dcfce7', labelColor: '#16a34a', text: 'SYSTEM' },
 };
-
-function generateDummyData(rangeKey) {
-  const hours = RANGE_HOURS[rangeKey];
-  const count = rangeKey === '24H' ? 22 : rangeKey === '7D' ? 28 : 30;
-  const labels = [], internal = [], external = [];
-  const now = Date.now();
-  for (let i = count - 1; i >= 0; i--) {
-    const ts = new Date(now - (i / (count - 1)) * hours * 3600 * 1000);
-    labels.push(rangeKey === '24H'
-      ? ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : ts.toLocaleDateString([], { month: 'short', day: 'numeric' }));
-    internal.push(parseFloat((34.5 + Math.sin(i * 0.4) * 0.8 + (Math.random() - 0.5) * 0.3).toFixed(2)));
-    external.push(parseFloat((14 + Math.sin(i * 0.6 + 1) * 8 + (Math.random() - 0.5) * 1.5).toFixed(2)));
-  }
-  return { labels, internal, external };
-}
 
 // ── Setup Wizard ──────────────────────────────────────────────────────────────
 
@@ -112,7 +97,6 @@ function SetupWizard({ onComplete }) {
         width: '100%', maxWidth: step === 2 ? '560px' : '440px',
         boxShadow: '0 24px 80px rgba(0,0,0,0.3)', overflow: 'hidden', animation: 'fadeIn 0.25s ease',
       }}>
-        {/* Header */}
         <div style={{ background: '#1e2d4a', padding: '22px 26px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
             <div style={{ width: '36px', height: '36px', background: '#f5a623', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -128,7 +112,6 @@ function SetupWizard({ onComplete }) {
           </div>
         </div>
 
-        {/* Body */}
         <div style={{ padding: '24px 26px' }}>
           {step === 1 && (
             <>
@@ -338,7 +321,8 @@ export default function Dashboard() {
   const [timeRange, setTimeRange] = useState('24H');
   const [hive, setHive] = useState(null);
   const [device, setDevice] = useState(null);
-  const [chartData, setChartData] = useState(() => generateDummyData('24H'));
+  // CHANGED: was `useState(() => generateDummyData('24H'))` — now starts null, no fake data
+  const [chartData, setChartData] = useState(null);
   const [hasRealReadings, setHasRealReadings] = useState(false);
   const hiveIdRef = useRef(null);
 
@@ -371,7 +355,8 @@ export default function Dashboard() {
 
         await fetchChartData(foundHive.id, '24H');
       } catch {
-        setChartData(generateDummyData('24H'));
+        // CHANGED: no longer falls back to generateDummyData — shows null state
+        setChartData(null);
       } finally {
         setLoading(false);
       }
@@ -381,7 +366,8 @@ export default function Dashboard() {
 
   const fetchChartData = useCallback(async (hid, range) => {
     const id = hid ?? hiveIdRef.current;
-    if (!id) { setChartData(generateDummyData(range)); return; }
+    // CHANGED: was `setChartData(generateDummyData(range))` — now sets null when no hive
+    if (!id) { setChartData(null); return; }
     setChartLoading(true);
     try {
       const since = new Date(Date.now() - RANGE_HOURS[range] * 3600 * 1000).toISOString();
@@ -396,9 +382,13 @@ export default function Dashboard() {
         setChartData({ labels, internal, external: internal.map(() => null) });
         setHasRealReadings(true);
       } else {
-        setChartData(generateDummyData(range));
+        // CHANGED: was `setChartData(generateDummyData(range))` — now null; empty state rendered below
+        setChartData(null);
       }
-    } catch { setChartData(generateDummyData(range)); }
+    } catch {
+      // CHANGED: was `setChartData(generateDummyData(range))` — now null on error
+      setChartData(null);
+    }
     finally { setChartLoading(false); }
   }, []);
 
@@ -411,8 +401,23 @@ export default function Dashboard() {
     fetchChartData(newHive.id, '24H');
   };
 
-  const latestC = latest?.temperature_c != null ? parseFloat(parseFloat(latest.temperature_c).toFixed(1)) : 34.7;
-  const externalC = externalCondition?.temp_c != null ? parseFloat(parseFloat(externalCondition.temp_c).toFixed(1)) : 18.7;
+  // CHANGED: was defaulting to 34.7 and 18.7 — now null when no real data
+  const latestC = latest?.temperature_c != null
+    ? parseFloat(parseFloat(latest.temperature_c).toFixed(1))
+    : null;
+  const externalC = externalCondition?.temp_c != null
+    ? parseFloat(parseFloat(externalCondition.temp_c).toFixed(1))
+    : null;
+
+  // CHANGED: was hardcoded 0.1 — now computed from the last two real chart readings
+  const internalDelta = !loading && chartData?.internal?.length >= 2
+    ? parseFloat((
+        chartData.internal[chartData.internal.length - 1] -
+        chartData.internal[chartData.internal.length - 2]
+      ).toFixed(1))
+    : 0;
+  // External delta: no historical endpoint available — remains 0 until an API is added
+  const externalDelta = 0;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
@@ -440,8 +445,25 @@ export default function Dashboard() {
 
         <div style={{ padding: '0 28px 28px' }}>
           <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
-            <TempCard title="Internal Temperature" value={loading ? '…' : latestC} delta={0.1} sensor={device ? `Device ${device.id}` : 'Brood Nest Sensor A1'} accentColor="#f5a623" Icon={ThermIcon} />
-            <TempCard title="External Temperature" value={loading ? '…' : externalC} delta={-1.2} sensor="Environment Sensor E2" accentColor="#1e2d4a" Icon={WindIcon} />
+            {/* CHANGED: value no longer falls back to fake 34.7 / 18.7 — shows '—' when null */}
+            {/* CHANGED: delta no longer hardcoded 0.1/-1.2 — computed from real chart data */}
+            {/* CHANGED: sensor label uses real device id; external uses provider from API */}
+            <TempCard
+              title="Internal Temperature"
+              value={loading ? '…' : (latestC ?? '—')}
+              delta={internalDelta}
+              sensor={device ? `Device ${device.id}` : 'No device registered'}
+              accentColor="#f5a623"
+              Icon={ThermIcon}
+            />
+            <TempCard
+              title="External Temperature"
+              value={loading ? '…' : (externalC ?? '—')}
+              delta={externalDelta}
+              sensor={externalCondition?.provider ? `Provider: ${externalCondition.provider}` : 'External sensor'}
+              accentColor="#1e2d4a"
+              Icon={WindIcon}
+            />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '16px', alignItems: 'start' }}>
@@ -451,7 +473,6 @@ export default function Dashboard() {
                   <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Temperature Analysis
                     {chartLoading && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#94a3b8', fontWeight: 500, textTransform: 'none' }}>Loading…</span>}
-                    {!hasRealReadings && !loading && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#f59e0b', fontWeight: 500, textTransform: 'none' }}>Demo data</span>}
                   </div>
                   <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '3px' }}>Internal vs External Correlation</div>
                 </div>
@@ -461,7 +482,19 @@ export default function Dashboard() {
                   ))}
                 </div>
               </div>
-              <div style={{ height: '290px' }}>{chartData && <DashboardChart data={chartData} />}</div>
+              {/* CHANGED: was always rendering chart (with fake data); now shows empty state when no data */}
+              <div style={{ height: '290px' }}>
+                {chartData ? (
+                  <DashboardChart data={chartData} />
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '28px' }}>📊</span>
+                    <span style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>
+                      {chartLoading ? 'Loading data…' : 'No readings available yet for this range.'}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={{ background: 'white', borderRadius: '12px', padding: '22px', boxShadow: 'var(--shadow-sm)' }}>
@@ -469,6 +502,7 @@ export default function Dashboard() {
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>System Events</div>
                 <button onClick={() => navigate('/alerts')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 800, color: '#f5a623', letterSpacing: '0.05em', textTransform: 'uppercase' }}>View All</button>
               </div>
+              {/* NOTE: SYSTEM_EVENTS remains static — no /api/alerts endpoint exists */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {SYSTEM_EVENTS.map((evt, i) => {
                   const s = EVENT_STYLES[evt.type];

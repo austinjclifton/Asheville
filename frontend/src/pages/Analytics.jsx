@@ -1,53 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Navigation from "../components/Navigation";
 import { apiFetch } from '../api';
- 
-function generateData(days) {
-  const dayLabels = [];
-  const now = new Date();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    dayLabels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-  }
- 
-  const labels = [];
-  const internalAvg = [];
-  const externalAvg = [];
-  const tempDiff = [];
-  const summaries = [];
- 
-  dayLabels.forEach((day, d) => {
-    [0, 1, 2, 3].forEach((ti) => {
-      labels.push(ti === 0 ? day : '');
-      const internal = 34.2 + Math.sin(d * 0.3) * 0.5 + (Math.random() - 0.5) * 0.3;
-      const extBase = 17 + Math.sin((ti / 3) * Math.PI) * 12 + Math.sin(d * 0.4) * 2;
-      const external = Math.max(8, extBase + (Math.random() - 0.5) * 1.5);
-      internalAvg.push(parseFloat(internal.toFixed(1)));
-      externalAvg.push(parseFloat(external.toFixed(1)));
-      tempDiff.push(parseFloat(Math.max(2, internal - external).toFixed(1)));
-    });
- 
-    const intA = parseFloat((34.2 + Math.sin(d * 0.3) * 0.5).toFixed(1));
-    const extA = parseFloat((14 + Math.sin(d * 0.5) * 4).toFixed(1));
-    const diff = parseFloat((intA - extA).toFixed(1));
-    summaries.push({
-      date: day,
-      intAvg: `${intA}°C`,
-      intRange: `${(intA - 0.8).toFixed(1)}–${(intA + 0.7).toFixed(1)}°C`,
-      extAvg: `${extA}°C`,
-      extRange: `${(extA - 5).toFixed(1)}–${(extA + 6).toFixed(1)}°C`,
-      diff: `${diff}°C`,
-      status: diff > 18 ? 'Normal' : 'Warning',
-    });
-  });
- 
-  return { labels, internalAvg, externalAvg, tempDiff, summaries };
-}
- 
+
+// CHANGED: generateData() dummy function removed entirely —
+// all data now comes from /api/readings/since and /api/external-conditions/since
+
 function buildChartDataFromAPI(readings, externalConditions) {
   if (!readings || readings.length === 0) return null;
- 
+
   const extByTs = {};
   if (externalConditions && externalConditions.length > 0) {
     externalConditions.forEach(ec => {
@@ -55,14 +15,14 @@ function buildChartDataFromAPI(readings, externalConditions) {
       extByTs[ts] = ec.temp_c;
     });
   }
- 
+
   const labels = readings.map(r => {
     const d = new Date(r.bucket_at);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   });
- 
+
   const internalAvg = readings.map(r => parseFloat(parseFloat(r.temperature_c).toFixed(1)));
- 
+
   const externalAvg = readings.map(r => {
     const ts = Math.floor(new Date(r.bucket_at).getTime() / (10 * 60 * 1000));
     for (const offset of [0, 1, -1]) {
@@ -71,12 +31,12 @@ function buildChartDataFromAPI(readings, externalConditions) {
     }
     return null;
   });
- 
+
   const tempDiff = internalAvg.map((intT, i) => {
     const extT = externalAvg[i];
     return extT !== null ? parseFloat((intT - extT).toFixed(1)) : null;
   });
- 
+
   const dayMap = {};
   readings.forEach((r, i) => {
     const day = new Date(r.bucket_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -85,7 +45,7 @@ function buildChartDataFromAPI(readings, externalConditions) {
     const extT = externalAvg[i];
     if (extT !== null) dayMap[day].extTemps.push(extT);
   });
- 
+
   const summaries = Object.entries(dayMap).map(([date, { temps, extTemps }]) => {
     const intAvgVal = temps.reduce((a, b) => a + b, 0) / temps.length;
     const intMin = Math.min(...temps);
@@ -104,22 +64,22 @@ function buildChartDataFromAPI(readings, externalConditions) {
       status: diffVal !== null && diffVal > 18 ? 'Normal' : 'Warning',
     };
   });
- 
+
   return { labels, internalAvg, externalAvg, tempDiff, summaries };
 }
-  
+
 function AnalyticsChart({ data, view }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
- 
+
   useEffect(() => {
     if (!canvasRef.current || !data) return;
- 
+
     const buildChart = () => {
       if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
       const ctx = canvasRef.current.getContext('2d');
       const Chart = window.Chart;
- 
+
       const datasets = view === 'comparison'
         ? [
             {
@@ -189,7 +149,7 @@ function AnalyticsChart({ data, view }) {
               order: 2,
             },
           ];
- 
+
       chartRef.current = new Chart(ctx, {
         data: { labels: data.labels, datasets },
         options: {
@@ -245,7 +205,7 @@ function AnalyticsChart({ data, view }) {
         },
       });
     };
- 
+
     if (window.Chart) {
       buildChart();
     } else {
@@ -254,13 +214,13 @@ function AnalyticsChart({ data, view }) {
       script.onload = buildChart;
       document.head.appendChild(script);
     }
- 
+
     return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
   }, [data, view]);
- 
+
   return <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />;
 }
-  
+
 function StatCard({ label, value, sub }) {
   return (
     <div style={{ background: 'white', borderRadius: '12px', padding: '18px 20px', boxShadow: 'var(--shadow-sm)' }}>
@@ -270,10 +230,10 @@ function StatCard({ label, value, sub }) {
     </div>
   );
 }
- 
+
 const RANGE_DAYS = { '7D': 7, '30D': 30, '90D': 90 };
 const FILTER_OPTIONS = ['All', 'Normal', 'Warning'];
- 
+
 function exportToCSV(summaries, range) {
   const header = 'Date,Int. Avg,Int. Range,Ext. Avg,Ext. Range,Diff,Status\n';
   const rows = summaries.map(r =>
@@ -287,19 +247,21 @@ function exportToCSV(summaries, range) {
   a.click();
   URL.revokeObjectURL(url);
 }
-  
+
 export default function Analytics() {
   const [range, setRange] = useState('7D');
   const [view, setView] = useState('comparison');
-  const [chartData, setChartData] = useState(() => generateData(7));
-  const [allSummaries, setAllSummaries] = useState(() => generateData(7).summaries);
+  // CHANGED: was `useState(() => generateData(7))` — now null until real API data arrives
+  const [chartData, setChartData] = useState(null);
+  // CHANGED: was `useState(() => generateData(7).summaries)` — now empty array
+  const [allSummaries, setAllSummaries] = useState([]);
   const [filterIdx, setFilterIdx] = useState(0);
   const [visibleCount, setVisibleCount] = useState(5);
   const [toast, setToast] = useState(null);
   const [dataLoading, setDataLoading] = useState(false);
- 
+
   const hiveIdRef = useRef(null);
- 
+
   useEffect(() => {
     apiFetch('/api/hives')
       .then(res => {
@@ -308,98 +270,93 @@ export default function Analytics() {
           hiveIdRef.current = hives[0].id;
           loadData('7D', hives[0].id);
         }
+        // CHANGED: when no hive exists, we leave chartData null — no fake data shown
       })
       .catch(() => {
+        // CHANGED: on error, leave null — no fake data shown
       });
   }, []);
- 
+
   const loadData = useCallback(async (selectedRange, hiveId) => {
     const id = hiveId ?? hiveIdRef.current;
-    if (!id) return; 
- 
+    if (!id) return;
+
     const days = RANGE_DAYS[selectedRange];
     setDataLoading(true);
     try {
       const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
- 
+
       const [readingsRes, extRes] = await Promise.allSettled([
         apiFetch(`/api/readings/since?hiveId=${id}&since=${since}&order=asc&limit=500`),
         apiFetch(`/api/external-conditions/since?hiveId=${id}&since=${since}&order=asc`),
       ]);
- 
+
       const readings = readingsRes.status === 'fulfilled'
         ? (readingsRes.value?.readings ?? [])
         : [];
       const externalConditions = extRes.status === 'fulfilled'
         ? (extRes.value?.externalConditions ?? [])
         : [];
- 
+
       const realData = buildChartDataFromAPI(readings, externalConditions);
-      if (realData && realData.labels.length > 0) {
-        setChartData(realData);
-        setAllSummaries(realData.summaries);
-      } else {
-        const generated = generateData(days);
-        setChartData(generated);
-        setAllSummaries(generated.summaries);
-      }
+      // CHANGED: no longer falls back to generateData — uses null to show empty state
+      setChartData(realData ?? null);
+      setAllSummaries(realData?.summaries ?? []);
     } catch {
-      const generated = generateData(days);
-      setChartData(generated);
-      setAllSummaries(generated.summaries);
+      // CHANGED: on error, set null — no fake data
+      setChartData(null);
+      setAllSummaries([]);
     } finally {
       setDataLoading(false);
       setVisibleCount(5);
     }
   }, []);
- 
+
   useEffect(() => {
     if (hiveIdRef.current) {
       loadData(range, hiveIdRef.current);
     } else {
-      const days = RANGE_DAYS[range];
-      const d = generateData(days);
-      setChartData(d);
-      setAllSummaries(d.summaries);
+      // CHANGED: was setting generateData() — now sets null when no hive
+      setChartData(null);
+      setAllSummaries([]);
       setVisibleCount(5);
     }
   }, [range, loadData]);
- 
+
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 2500);
   };
- 
+
   const handleExport = () => {
     exportToCSV(allSummaries, range);
     showToast(`Exported ${allSummaries.length} rows as CSV`);
   };
- 
+
   const handleFilterCycle = () => {
     setFilterIdx(i => (i + 1) % FILTER_OPTIONS.length);
   };
- 
+
   const currentFilter = FILTER_OPTIONS[filterIdx];
   const filteredSummaries = currentFilter === 'All'
     ? allSummaries
     : allSummaries.filter(r => r.status === currentFilter);
   const visibleSummaries = filteredSummaries.slice(0, visibleCount);
   const hasMore = visibleCount < filteredSummaries.length;
- 
-  const intVals = chartData.internalAvg;
-  const extVals = chartData.externalAvg.filter(v => v !== null);
-  const intAvg = (intVals.reduce((a, b) => a + b, 0) / intVals.length).toFixed(1);
-  const intMin = Math.min(...intVals).toFixed(1);
-  const intMax = Math.max(...intVals).toFixed(1);
-  const extAvg = extVals.length
-    ? (extVals.reduce((a, b) => a + b, 0) / extVals.length).toFixed(1)
-    : 'N/A';
- 
+
+  // CHANGED: all stat computations now guard against null/empty chartData
+  const intVals = chartData?.internalAvg ?? [];
+  const extVals = (chartData?.externalAvg ?? []).filter(v => v !== null);
+  const intAvg  = intVals.length ? (intVals.reduce((a, b) => a + b, 0) / intVals.length).toFixed(1) : '—';
+  const intMin  = intVals.length ? Math.min(...intVals).toFixed(1) : '—';
+  const intMax  = intVals.length ? Math.max(...intVals).toFixed(1) : '—';
+  const extAvg  = extVals.length ? (extVals.reduce((a, b) => a + b, 0) / extVals.length).toFixed(1) : '—';
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
       <Navigation />
       <main style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
- 
+
         {toast && (
           <div style={{
             position: 'fixed', top: '20px', right: '20px', zIndex: 1000,
@@ -412,7 +369,7 @@ export default function Analytics() {
             {toast.msg}
           </div>
         )}
- 
+
         <div style={{ padding: '24px 28px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <div>
             <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Analytics</h1>
@@ -435,13 +392,16 @@ export default function Analytics() {
             </div>
             <button
               onClick={handleExport}
+              disabled={allSummaries.length === 0}
               style={{
                 padding: '7px 14px', borderRadius: '8px', border: '1.5px solid #e2e8f0',
                 background: 'white', color: '#1e2d4a', fontSize: '12px', fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                cursor: allSummaries.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: allSummaries.length === 0 ? 0.5 : 1,
+                display: 'flex', alignItems: 'center', gap: '6px',
                 boxShadow: 'var(--shadow-sm)', transition: 'background 0.15s',
               }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+              onMouseEnter={e => { if (allSummaries.length) e.currentTarget.style.background = '#f8fafc'; }}
               onMouseLeave={e => e.currentTarget.style.background = 'white'}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -451,15 +411,20 @@ export default function Analytics() {
             </button>
           </div>
         </div>
- 
+
         <div style={{ padding: '0 28px 28px' }}>
+          {/* CHANGED: stat cards now show '—' instead of fake numbers when no data */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px' }}>
-            <StatCard label="Int. Avg Temp" value={`${intAvg}°C`} sub={`±${(parseFloat(intMax) - parseFloat(intMin)).toFixed(1)}°C variance`} />
-            <StatCard label="Int. Min Temp" value={`${intMin}°C`} sub="Over selected range" />
-            <StatCard label="Int. Max Temp" value={`${intMax}°C`} sub="Over selected range" />
-            <StatCard label="Ext. Avg Temp" value={extAvg !== 'N/A' ? `${extAvg}°C` : extAvg} sub="Ambient sensor" />
+            <StatCard
+              label="Int. Avg Temp"
+              value={intAvg !== '—' ? `${intAvg}°C` : intAvg}
+              sub={intAvg !== '—' ? `±${(parseFloat(intMax) - parseFloat(intMin)).toFixed(1)}°C variance` : 'No data for range'}
+            />
+            <StatCard label="Int. Min Temp" value={intMin !== '—' ? `${intMin}°C` : intMin} sub="Over selected range" />
+            <StatCard label="Int. Max Temp" value={intMax !== '—' ? `${intMax}°C` : intMax} sub="Over selected range" />
+            <StatCard label="Ext. Avg Temp" value={extAvg !== '—' ? `${extAvg}°C` : extAvg} sub="Ambient sensor" />
           </div>
- 
+
           <div style={{ background: 'white', borderRadius: '12px', padding: '22px', boxShadow: 'var(--shadow-sm)', marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
               <div>
@@ -479,11 +444,21 @@ export default function Analytics() {
                 ))}
               </div>
             </div>
+            {/* CHANGED: was always rendering <AnalyticsChart> — now shows loading/empty state when no data */}
             <div style={{ height: '340px' }}>
-              <AnalyticsChart data={chartData} view={view} />
+              {dataLoading || !chartData ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: '10px' }}>
+                  <span style={{ fontSize: '32px' }}>📈</span>
+                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>
+                    {dataLoading ? 'Loading chart data…' : 'No readings available for the selected range.'}
+                  </span>
+                </div>
+              ) : (
+                <AnalyticsChart data={chartData} view={view} />
+              )}
             </div>
           </div>
- 
+
           <div style={{ background: 'white', borderRadius: '12px', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
             <div style={{ padding: '16px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -533,10 +508,11 @@ export default function Analytics() {
                   </tr>
                 </thead>
                 <tbody>
+                  {/* CHANGED: was rendering fake rows — now shows real data or an empty-state row */}
                   {visibleSummaries.length === 0 ? (
                     <tr>
                       <td colSpan="7" style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                        No records found matching the filter criteria.
+                        {dataLoading ? 'Loading summaries…' : 'No records found. Send readings from your sensor to see data here.'}
                       </td>
                     </tr>
                   ) : (
@@ -580,7 +556,9 @@ export default function Analytics() {
                   Load More ({filteredSummaries.length - visibleCount} remaining)
                 </button>
               ) : (
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>All {filteredSummaries.length} rows shown</span>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                  {filteredSummaries.length === 0 ? 'No data to display' : `All ${filteredSummaries.length} rows shown`}
+                </span>
               )}
             </div>
           </div>
@@ -589,4 +567,3 @@ export default function Analytics() {
     </div>
   );
 }
- 
