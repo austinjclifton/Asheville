@@ -1,7 +1,110 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiFetch, setCsrfToken } from '../api';
-
+import { apiFetch, setCsrfToken, setCurrentUser } from '../api';
+ 
+function ForgotPasswordModal({ onClose }) {
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState('idle'); 
+ 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await apiFetch('/api/auth/reset-password/request', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      setStatus('success');
+    } catch {
+      setStatus('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+ 
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 100, padding: '24px', animation: 'fadeIn 0.15s ease',
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{
+        background: 'white', borderRadius: '16px', padding: '32px',
+        width: '100%', maxWidth: '400px',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+        animation: 'fadeIn 0.2s ease',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ fontSize: '17px', fontWeight: 800, color: '#1e2d4a' }}>Reset Password</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+ 
+        {status === 'success' ? (
+          <div>
+            <div style={{ padding: '14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', marginBottom: '20px', color: '#16a34a', fontSize: '14px', fontWeight: 500 }}>
+              If an account exists for that email, a reset link has been sent.
+            </div>
+            <button
+              onClick={onClose}
+              style={{ width: '100%', padding: '10px', background: '#1e2d4a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}
+            >
+              Back to Login
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px', lineHeight: 1.5 }}>
+              Enter your email address and we'll send you a link to reset your password.
+            </p>
+            {status === 'error' && (
+              <div style={{ marginBottom: '14px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#dc2626', fontSize: '13px' }}>
+                Something went wrong. Please try again.
+              </div>
+            )}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '7px', fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+                placeholder="your@email.com"
+                style={{
+                  width: '100%', padding: '11px 14px',
+                  border: '1.5px solid #e2e8f0', borderRadius: '10px',
+                  fontSize: '14px', color: '#1e2d4a', background: '#f8fafc',
+                  outline: 'none', fontFamily: 'inherit',
+                }}
+                onFocus={e => { e.target.style.borderColor = '#1e2d4a'; e.target.style.background = 'white'; }}
+                onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = '#f8fafc'; }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button type="button" onClick={onClose} style={{ flex: 1, padding: '10px', border: '1.5px solid #e2e8f0', borderRadius: '10px', background: 'white', fontSize: '14px', fontWeight: 600, color: '#64748b', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button type="submit" disabled={loading} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '10px', background: loading ? '#94a3b8' : '#1e2d4a', color: 'white', fontSize: '14px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
+                {loading ? 'Sending…' : 'Send Reset Link'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+ 
+ 
 export default function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -9,7 +112,8 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+ 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
@@ -20,6 +124,7 @@ export default function LoginPage() {
         body: JSON.stringify({ identifier: email, password }),
       });
       setCsrfToken(data.csrfToken);
+      setCurrentUser(data.user);
       navigate('/dashboard');
     } catch (err) {
       setError(err.message || 'Invalid credentials. Please try again.');
@@ -27,7 +132,7 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-
+ 
   return (
     <div style={{
       minHeight: '100vh',
@@ -38,12 +143,14 @@ export default function LoginPage() {
       padding: '24px',
       fontFamily: "'DM Sans', system-ui, sans-serif",
     }}>
+      {showForgotPassword && <ForgotPasswordModal onClose={() => setShowForgotPassword(false)} />}
+ 
       <div style={{
         width: '100%',
         maxWidth: '420px',
         animation: 'fadeIn 0.4s ease',
       }}>
-        {/* Logo header */}
+        {/*Logo header*/}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{
             display: 'inline-flex',
@@ -74,20 +181,20 @@ export default function LoginPage() {
             </div>
           </div>
         </div>
-
-        {/* Card */}
+ 
+        {/*Card*/}
         <div style={{
           background: 'white',
           borderRadius: '16px',
           boxShadow: '0 4px 24px rgba(30,45,74,0.10), 0 1px 4px rgba(30,45,74,0.06)',
           overflow: 'hidden',
         }}>
-          {/* Top accent bar */}
+          {/* Top accent bar*/}
           <div style={{
             height: '4px',
             background: 'linear-gradient(90deg, var(--navy) 0%, var(--amber) 100%)',
           }} />
-
+ 
           <div style={{ padding: '36px 36px 32px' }}>
             {error && (
               <div style={{
@@ -109,7 +216,7 @@ export default function LoginPage() {
                 {error}
               </div>
             )}
-
+ 
             <form onSubmit={handleLogin}>
               {/* Email */}
               <div style={{ marginBottom: '18px' }}>
@@ -165,7 +272,7 @@ export default function LoginPage() {
                   />
                 </div>
               </div>
-
+ 
               {/* Password */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{
@@ -220,7 +327,7 @@ export default function LoginPage() {
                   />
                 </div>
               </div>
-
+ 
               {/* Remember + Forgot */}
               <div style={{
                 display: 'flex',
@@ -245,21 +352,27 @@ export default function LoginPage() {
                   />
                   Remember me
                 </label>
-                <a
-                  href="#"
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
                   style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
                     fontSize: '13px',
                     fontWeight: 600,
                     color: 'var(--amber)',
+                    cursor: 'pointer',
                     transition: 'opacity 0.15s',
+                    fontFamily: 'inherit',
                   }}
                   onMouseEnter={(e) => e.target.style.opacity = '0.75'}
                   onMouseLeave={(e) => e.target.style.opacity = '1'}
                 >
                   Forgot password?
-                </a>
+                </button>
               </div>
-
+ 
               {/* Submit */}
               <button
                 type="submit"
@@ -300,7 +413,7 @@ export default function LoginPage() {
               </button>
             </form>
           </div>
-
+ 
           {/* Footer */}
           <div style={{
             padding: '14px 36px',

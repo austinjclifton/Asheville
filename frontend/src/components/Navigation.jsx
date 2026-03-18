@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiFetch, setCsrfToken } from '../api';
-
+ 
 const NAV_ITEMS = [
   {
     href: '/dashboard',
@@ -46,16 +46,41 @@ const NAV_ITEMS = [
     ),
   },
 ];
-
+ 
 function getSavedExpanded() {
   try { return localStorage.getItem('nav_expanded') !== 'false'; } catch { return true; }
 }
-
+ 
+function getInitials(name) {
+  if (!name) return '??';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+ 
 export default function Navigation() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(getSavedExpanded);
-
+  const [user, setUser] = useState(null);
+ 
+  // On mount, refresh the CSRF token (handles page refresh) and fetch user info.
+  useEffect(() => {
+    async function initAuth() {
+      try {
+        const [csrfRes, meRes] = await Promise.all([
+          apiFetch('/api/auth/csrf'),
+          apiFetch('/api/auth/me'),
+        ]);
+        setCsrfToken(csrfRes.csrfToken);
+        setUser(meRes.user);
+      } catch {
+        // Session may have expired — navigation will handle redirects.
+      }
+    }
+    initAuth();
+  }, []);
+ 
   const handleToggle = () => {
     setIsExpanded(prev => {
       const next = !prev;
@@ -63,7 +88,7 @@ export default function Navigation() {
       return next;
     });
   };
-
+ 
   const handleLogout = async (e) => {
     e.preventDefault();
     try {
@@ -72,7 +97,10 @@ export default function Navigation() {
     setCsrfToken(null);
     navigate('/');
   };
-
+ 
+  const displayName = user?.username || 'User';
+  const initials = getInitials(displayName);
+ 
   return (
     <aside style={{
       width: isExpanded ? '240px' : '72px',
@@ -109,7 +137,7 @@ export default function Navigation() {
           </div>
         )}
       </div>
-
+ 
       {/* Nav Items */}
       <nav style={{ flex: 1, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         {NAV_ITEMS.map((item) => {
@@ -152,7 +180,7 @@ export default function Navigation() {
           );
         })}
       </nav>
-
+ 
       {/* Bottom: toggle + user */}
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '12px 10px' }}>
         {/* Toggle */}
@@ -176,7 +204,7 @@ export default function Navigation() {
             }
           </svg>
         </button>
-
+ 
         {/* User row */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '10px',
@@ -188,12 +216,12 @@ export default function Navigation() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: 'white', fontWeight: 700, fontSize: '13px', flexShrink: 0,
             }}>
-              JD
+              {initials}
             </div>
             {isExpanded && (
               <div>
-                <div style={{ color: 'white', fontWeight: 600, fontSize: '13px' }}>John Doe</div>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>Admin</div>
+                <div style={{ color: 'white', fontWeight: 600, fontSize: '13px' }}>{displayName}</div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>{user?.email || 'Beekeeper'}</div>
               </div>
             )}
           </div>

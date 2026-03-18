@@ -1,9 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Navigation from "../components/Navigation";
 import { apiFetch } from '../api';
-
-// ---------- Sub-components ----------
-
+  
 function SectionCard({ title, description, children }) {
   return (
     <div style={{ background: 'white', borderRadius: '12px', boxShadow: 'var(--shadow-sm)', marginBottom: '20px', overflow: 'hidden' }}>
@@ -15,7 +13,7 @@ function SectionCard({ title, description, children }) {
     </div>
   );
 }
-
+ 
 function FormGroup({ label, hint, children }) {
   return (
     <div style={{ marginBottom: '20px' }}>
@@ -27,7 +25,7 @@ function FormGroup({ label, hint, children }) {
     </div>
   );
 }
-
+ 
 const inputStyle = {
   width: '100%', padding: '10px 14px',
   border: '1.5px solid #e2e8f0', borderRadius: '10px',
@@ -35,7 +33,7 @@ const inputStyle = {
   outline: 'none', transition: 'border-color 0.15s, background 0.15s',
   fontFamily: "'DM Sans', system-ui, sans-serif",
 };
-
+ 
 function StyledInput({ style, ...props }) {
   return (
     <input
@@ -46,7 +44,7 @@ function StyledInput({ style, ...props }) {
     />
   );
 }
-
+ 
 function StyledSelect({ children, value, onChange }) {
   return (
     <select
@@ -60,7 +58,7 @@ function StyledSelect({ children, value, onChange }) {
     </select>
   );
 }
-
+ 
 function Toggle({ label, description, checked, onChange }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #f1f5f9' }}>
@@ -90,16 +88,14 @@ function Toggle({ label, description, checked, onChange }) {
     </div>
   );
 }
-
-// ---------- Change Password Modal ----------
-
+  
 function ChangePasswordModal({ onClose, onSuccess }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
+ 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -108,7 +104,7 @@ function ChangePasswordModal({ onClose, onSuccess }) {
     setLoading(true);
     try {
       await apiFetch('/api/auth/change-password', {
-        method: 'POST',
+        method: 'PATCH',
         body: JSON.stringify({ currentPassword: current, newPassword: next }),
       });
       onSuccess();
@@ -118,7 +114,7 @@ function ChangePasswordModal({ onClose, onSuccess }) {
       setLoading(false);
     }
   };
-
+ 
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
@@ -138,13 +134,13 @@ function ChangePasswordModal({ onClose, onSuccess }) {
             </svg>
           </button>
         </div>
-
+ 
         {error && (
           <div style={{ marginBottom: '16px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#dc2626', fontSize: '13px', fontWeight: 500 }}>
             {error}
           </div>
         )}
-
+ 
         <form onSubmit={handleSubmit}>
           <FormGroup label="Current Password">
             <StyledInput type="password" value={current} onChange={e => setCurrent(e.target.value)} required placeholder="Enter current password" />
@@ -175,9 +171,8 @@ function ChangePasswordModal({ onClose, onSuccess }) {
     </div>
   );
 }
-
-// ---------- Main component ----------
-
+ 
+ 
 const DEFAULT_SETTINGS = {
   criticalLow: '88',
   criticalHigh: '97',
@@ -193,26 +188,64 @@ const DEFAULT_SETTINGS = {
   enableInfo: false,
   enableEmail: true,
 };
-
+ 
 export default function Settings() {
   const [form, setForm] = useState(DEFAULT_SETTINGS);
-  const [saved, setSaved] = useState(DEFAULT_SETTINGS);  // snapshot for cancel
+  const [saved, setSaved] = useState(DEFAULT_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-
+  const [deviceId, setDeviceId] = useState(null);
+  const [deviceLoading, setDeviceLoading] = useState(true);
+ 
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
-
+ 
+  useEffect(() => {
+    async function loadInitialData() {
+      try {
+        const [meRes, devicesRes] = await Promise.allSettled([
+          apiFetch('/api/auth/me'),
+          apiFetch('/api/devices'),
+        ]);
+ 
+        if (meRes.status === 'fulfilled' && meRes.value?.user) {
+          const user = meRes.value.user;
+          setForm(f => ({
+            ...f,
+            displayName: user.username || '',
+            accountEmail: user.email || '',
+            alertEmail: f.alertEmail || user.email || '',
+          }));
+          setSaved(f => ({
+            ...f,
+            displayName: user.username || '',
+            accountEmail: user.email || '',
+          }));
+        }
+ 
+        if (devicesRes.status === 'fulfilled') {
+          const devices = devicesRes.value?.devices ?? [];
+          if (devices.length > 0) {
+            setDeviceId(devices[0].id);
+          }
+        }
+      } catch {
+      } finally {
+        setDeviceLoading(false);
+      }
+    }
+    loadInitialData();
+  }, []);
+ 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 2800);
   };
-
+ 
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Settings are frontend-only in the MVP — simulate a brief save delay
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 400));
       setSaved(form);
       showToast('Settings saved successfully');
     } catch (err) {
@@ -221,23 +254,29 @@ export default function Settings() {
       setSaving(false);
     }
   };
-
+ 
   const handleCancel = () => {
     setForm(saved);
     showToast('Changes discarded', true);
   };
-
+ 
+  const sensorLabel = deviceLoading
+    ? 'Loading…'
+    : deviceId
+      ? `DEVICE-${String(deviceId).padStart(3, '0')}`
+      : 'No device found';
+ 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
       <Navigation />
-
+ 
       {showPasswordModal && (
         <ChangePasswordModal
           onClose={() => setShowPasswordModal(false)}
           onSuccess={() => { setShowPasswordModal(false); showToast('Password updated successfully'); }}
         />
       )}
-
+ 
       {toast && (
         <div style={{
           position: 'fixed', top: '20px', right: '20px', zIndex: 999,
@@ -250,16 +289,15 @@ export default function Settings() {
           {toast.msg}
         </div>
       )}
-
+ 
       <main style={{ flex: 1, overflow: 'auto' }}>
         <div style={{ padding: '24px 28px 0', marginBottom: '20px' }}>
           <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Settings</h1>
           <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '3px' }}>Manage your system preferences and alert configuration</div>
         </div>
-
+ 
         <div style={{ padding: '0 28px 28px', maxWidth: '800px' }}>
-
-          {/* Temperature Thresholds */}
+ 
           <SectionCard title="Temperature Thresholds" description="Define critical and optimal temperature ranges for your hive">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <FormGroup label="Critical Low (°F)" hint="Alert when temperature drops below this value">
@@ -276,8 +314,7 @@ export default function Settings() {
               </FormGroup>
             </div>
           </SectionCard>
-
-          {/* Alert Preferences */}
+ 
           <SectionCard title="Alert Preferences" description="Configure when and how you receive notifications">
             <div style={{ marginBottom: '20px' }}>
               <Toggle label="Enable critical alerts" description="Receive alerts for critical threshold violations" checked={form.enableCritical} onChange={v => set('enableCritical', v)} />
@@ -289,11 +326,10 @@ export default function Settings() {
               <StyledInput type="email" value={form.alertEmail} onChange={e => set('alertEmail', e.target.value)} placeholder="your@email.com" disabled={!form.enableEmail} style={!form.enableEmail ? { opacity: 0.5, cursor: 'not-allowed' } : {}} />
             </FormGroup>
           </SectionCard>
-
-          {/* Sensor Configuration */}
+ 
           <SectionCard title="Sensor Configuration" description="Configure your monitoring hardware settings">
-            <FormGroup label="Sensor ID">
-              <StyledInput type="text" value="SENSOR-001" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }} />
+            <FormGroup label="Sensor ID" hint="The device registered to your hive">
+              <StyledInput type="text" value={sensorLabel} disabled style={{ opacity: 0.6, cursor: 'not-allowed' }} />
             </FormGroup>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <FormGroup label="Reading Interval">
@@ -314,11 +350,10 @@ export default function Settings() {
             </div>
           </SectionCard>
 
-          {/* Account Settings */}
           <SectionCard title="Account Settings" description="Update your personal information and security settings">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <FormGroup label="Display Name">
-                <StyledInput type="text" value={form.displayName} onChange={e => set('displayName', e.target.value)} placeholder="Your name" />
+              <FormGroup label="Username" hint="Your account username">
+                <StyledInput type="text" value={form.displayName} onChange={e => set('displayName', e.target.value)} placeholder="Your username" />
               </FormGroup>
               <FormGroup label="Email Address">
                 <StyledInput type="email" value={form.accountEmail} onChange={e => set('accountEmail', e.target.value)} placeholder="your@email.com" />
@@ -337,8 +372,7 @@ export default function Settings() {
               Change Password
             </button>
           </SectionCard>
-
-          {/* Action Buttons */}
+ 
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
             <button
               onClick={handleCancel}
@@ -372,3 +406,4 @@ export default function Settings() {
     </div>
   );
 }
+ 
