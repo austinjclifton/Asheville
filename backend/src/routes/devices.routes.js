@@ -9,25 +9,25 @@ const devicesController = require("../controllers/devices.controller.js");
 
 /**
  * GET /api/devices
- * List all devices for the authenticated beekeeper.
+ * Lists all devices for the authenticated beekeeper
  */
 router.get("/", requireAuth, devicesController.list);
 
 /**
  * GET /api/devices/:id
- * Get a single device by id (scoped to authenticated beekeeper).
+ * Gets a single device by its Id
  */
 router.get("/:id", requireAuth, devicesController.getById);
 
 /**
  * POST /api/devices/:id/last-seen
- * Update last-seen timestamp for a device (scoped).
+ * Updates the last-seen timestamp for a device by its Id
  */
 router.post("/:id/last-seen", requireAuth, devicesController.touchLastSeen);
 
 /**
  * DELETE /api/devices/:id
- * Delete a device (scoped).
+ * Deletes a device by its Id
  */
 router.delete("/:id", requireAuth, requireCsrf, devicesController.remove);
 

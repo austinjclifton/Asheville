@@ -4,50 +4,69 @@
  * Devices Repository (PostgreSQL)
  * Table: device
  *
- * Responsibilities:
- * - SQL only (no business rules)
- * - Parameterized queries only
- * - Enforce ownership via joins: device -> hive -> beekeeper
- *
  * Notes:
- * - Under 1:1 hive<->device, DB should enforce UNIQUE(device.hive_id)
+ * - Under 1:1 hive<->device, DB enforces UNIQUE(device.hive_id)
  */
 
 const { query } = require("./pool");
+
+/* ========================================================================== */
+/* Inserts                                                                     */
+/* ========================================================================== */
 
 /**
  * Insert a device for a hive, only when the hive is owned by the beekeeper.
  * Returns the inserted row, or null when hive is not found / not owned.
  */
 exports.createScoped = async ({ beekeeperId, hiveId, installedAt, lastSeenAt }) => {
-  // If installedAt is provided (non-null), set it; otherwise let DB default apply.
-  const hasInstalledAt = installedAt !== undefined && installedAt !== null;
+  const hasInstalled = installedAt !== undefined;
+  const hasSeen = lastSeenAt !== undefined;
 
-  const sql = hasInstalledAt
-    ? `
-      INSERT INTO device (hive_id, installed_at, last_seen_at)
-      SELECT h.id, $1, $2
+  // Build dynamic insert column/value lists
+  const cols = ["hive_id"];
+  const vals = ["h.id"];
+  const params = [];
+  let p = 1;
+
+  if (hasInstalled) {
+    cols.push("installed_at");
+    vals.push(`$${p++}`);
+    params.push(installedAt);
+  }
+
+  if (hasSeen) {
+    cols.push("last_seen_at");
+    vals.push(`$${p++}`);
+    params.push(lastSeenAt);
+  }
+
+  // scoping params
+  const hiveIdParam = p++;
+  const beekeeperIdParam = p++;
+  params.push(hiveId, beekeeperId);
+
+  try {
+    const rows = await query(
+      `
+      INSERT INTO device (${cols.join(", ")})
+      SELECT ${vals.join(", ")}
       FROM hive h
-      WHERE h.id = $3
-        AND h.beekeeper_id = $4
+      WHERE h.id = $${hiveIdParam}
+        AND h.beekeeper_id = $${beekeeperIdParam}
       RETURNING *
-    `
-    : `
-      INSERT INTO device (hive_id, last_seen_at)
-      SELECT h.id, $1
-      FROM hive h
-      WHERE h.id = $2
-        AND h.beekeeper_id = $3
-      RETURNING *
-    `;
+      `,
+      params
+    );
 
-  const params = hasInstalledAt
-    ? [installedAt, lastSeenAt ?? null, hiveId, beekeeperId]
-    : [lastSeenAt ?? null, hiveId, beekeeperId];
-
-  const rows = await query(sql, params);
-  return rows[0] ?? null;
+    return rows[0] ?? null;
+  } catch (err) {
+    throw mapPgError(err) ?? err;
+  }
 };
+
+/* ========================================================================== */
+/* Reads                                                                       */
+/* ========================================================================== */
 
 /**
  * List all devices for a beekeeper.
@@ -61,7 +80,7 @@ exports.listByBeekeeper = async ({ beekeeperId }) => {
     WHERE h.beekeeper_id = $1
     ORDER BY d.id DESC
     `,
-    [beekeeperId]
+    [beekeeperId],
   );
 };
 
@@ -79,7 +98,7 @@ exports.listByHiveScoped = async ({ beekeeperId, hiveId }) => {
       AND h.beekeeper_id = $2
     ORDER BY d.id DESC
     `,
-    [hiveId, beekeeperId]
+    [hiveId, beekeeperId],
   );
 };
 
@@ -96,7 +115,7 @@ exports.findByHiveScoped = async ({ beekeeperId, hiveId }) => {
       AND h.beekeeper_id = $2
     LIMIT 1
     `,
-    [hiveId, beekeeperId]
+    [hiveId, beekeeperId],
   );
 
   return rows[0] ?? null;
@@ -115,7 +134,7 @@ exports.findByIdScoped = async ({ beekeeperId, deviceId }) => {
       AND h.beekeeper_id = $2
     LIMIT 1
     `,
-    [deviceId, beekeeperId]
+    [deviceId, beekeeperId],
   );
 
   return rows[0] ?? null;
@@ -134,11 +153,15 @@ exports.existsScoped = async ({ beekeeperId, deviceId }) => {
       AND h.beekeeper_id = $2
     LIMIT 1
     `,
-    [deviceId, beekeeperId]
+    [deviceId, beekeeperId],
   );
 
   return rows.length > 0;
 };
+
+/* ========================================================================== */
+/* Updates                                                                     */
+/* ========================================================================== */
 
 /**
  * Patch device fields (scoped).
@@ -160,7 +183,6 @@ exports.updateScoped = async ({ beekeeperId, deviceId, installedAt, lastSeenAt }
     values.push(lastSeenAt);
   }
 
-  // No-op patch: return current row (scoped).
   if (set.length === 0) {
     return exports.findByIdScoped({ beekeeperId, deviceId });
   }
@@ -177,32 +199,33 @@ exports.updateScoped = async ({ beekeeperId, deviceId, installedAt, lastSeenAt }
       AND h.beekeeper_id = $${i++}
     RETURNING d.*
     `,
-    values
+    values,
   );
 
   return rows[0] ?? null;
 };
 
 /**
- * Touch last_seen_at for a device (scoped).
+ * Touch last_seen_at for a device (unscoped).
  * If seenAt is undefined/null, defaults to now().
  */
-exports.touchLastSeenScoped = async ({ beekeeperId, deviceId, seenAt }) => {
+exports.touchLastSeen = async ({ deviceId, seenAt }) => {
   const rows = await query(
     `
-    UPDATE device d
+    UPDATE device
     SET last_seen_at = COALESCE($1, now())
-    FROM hive h
-    WHERE d.id = $2
-      AND d.hive_id = h.id
-      AND h.beekeeper_id = $3
-    RETURNING d.*
+    WHERE id = $2
+    RETURNING *
     `,
-    [seenAt ?? null, deviceId, beekeeperId]
+    [seenAt ?? null, deviceId],
   );
 
   return rows[0] ?? null;
 };
+
+/* ========================================================================== */
+/* Deletes                                                                     */
+/* ========================================================================== */
 
 /**
  * Delete a device by id (scoped).
@@ -218,8 +241,64 @@ exports.removeScoped = async ({ beekeeperId, deviceId }) => {
       AND h.beekeeper_id = $2
     RETURNING d.id
     `,
-    [deviceId, beekeeperId]
+    [deviceId, beekeeperId],
   );
 
   return rows.length > 0;
 };
+
+/* ========================================================================== */
+/* External Conditions support                                                 */
+/* ========================================================================== */
+
+/**
+ * Resolve a device's location_id via device -> hive.
+ * Returns: { location_id } | null
+ */
+exports.getLocationIdForDevice = async ({ deviceId }) => {
+  const rows = await query(
+    `
+    SELECT h.location_id
+    FROM device d
+    JOIN hive h ON h.id = d.hive_id
+    WHERE d.id = $1
+    LIMIT 1
+    `,
+    [deviceId],
+  );
+
+  return rows[0] ?? null;
+};
+
+/* ========================================================================== */
+/* Error mapping                                                               */
+/* ========================================================================== */
+
+function mapPgError(err) {
+  if (!err?.code) return null;
+
+  if (err.code === "23505") {
+    const constraint = err.constraint || err.detail || "";
+    const e = new Error("Device already exists for this hive");
+    e.status = 409;
+    e.code = "DUPLICATE_DEVICE";
+    e.meta = { constraint };
+    return e;
+  }
+
+  if (err.code === "23503") {
+    const e = new Error("Hive does not exist");
+    e.status = 400;
+    e.code = "HIVE_NOT_FOUND";
+    return e;
+  }
+
+  if (err.code === "22003" || err.code === "22P02") {
+    const e = new Error("Invalid device values");
+    e.status = 400;
+    e.code = "INVALID_DEVICE";
+    return e;
+  }
+
+  return null;
+}

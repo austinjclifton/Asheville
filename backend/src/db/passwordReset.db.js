@@ -6,10 +6,13 @@
  *
  * Responsibilities:
  * - Persist and retrieve reset tokens
- * - SQL only (no business rules)
  */
 
 const { query } = require("./pool");
+
+/* ========================================================================== */
+/* Writes                                                                      */
+/* ========================================================================== */
 
 /**
  * Create or replace a reset token for a user (1 active token per user).
@@ -25,16 +28,20 @@ exports.createOrReplace = async ({ userId, tokenHash, expiresAt }) => {
       expires_at = EXCLUDED.expires_at
     RETURNING user_id
     `,
-    [userId, tokenHash, expiresAt]
+    [userId, tokenHash, expiresAt],
   );
 
   return rows[0] ?? null;
 };
 
+/* ========================================================================== */
+/* Reads                                                                       */
+/* ========================================================================== */
+
 /**
  * Find a reset token row by token hash.
  */
-exports.findByTokenHash = async (tokenHash) => {
+exports.findByTokenHash = async ({ tokenHash }) => {
   const rows = await query(
     `
     SELECT user_id, token_hash, expires_at
@@ -42,23 +49,27 @@ exports.findByTokenHash = async (tokenHash) => {
     WHERE token_hash = $1
     LIMIT 1
     `,
-    [tokenHash]
+    [tokenHash],
   );
 
   return rows[0] ?? null;
 };
 
+/* ========================================================================== */
+/* Deletes                                                                     */
+/* ========================================================================== */
+
 /**
  * Delete any reset token for a user.
  */
-exports.deleteForUser = async (userId) => {
+exports.deleteForUser = async ({ userId }) => {
   const rows = await query(
     `
     DELETE FROM password_reset_token
     WHERE user_id = $1
     RETURNING user_id
     `,
-    [userId]
+    [userId],
   );
 
   return rows.length > 0;

@@ -3,17 +3,17 @@
 /**
  * Sessions Service
  *
- * Responsibilities:
- * - Own session lifecycle (create / validate / invalidate)
- * - Enforce session state rules (active + not expired)
- * - Generate session + CSRF tokens
+ * Responsibilities
+ * - Own session lifecycle such as create, validate, invalidate
+ * - Enforce session state rules such as active and not expired
+ * - Generate session and CSRF tokens
  *
- * Guarantees:
- * - Missing/blank/unknown/inactive/expired/orphaned tokens return null (not errors)
- * - Expired/orphaned sessions are invalidated opportunistically
+ * Guarantees
+ * - Missing, blank, unknown, inactive, expired, or orphaned tokens return null
+ * - Expired or orphaned sessions are invalidated opportunistically
  *
- * Notes:
- * - DB failures may throw (these are not "auth failures")
+ * Notes
+ * - DB failures may throw and these are not auth failures
  */
 
 const crypto = require("crypto");
@@ -21,10 +21,79 @@ const crypto = require("crypto");
 const sessionsRepo = require("../db/sessions.db");
 const usersRepo = require("../db/users.db");
 
+/* ========================================================================== */
+/* Config                                                                      */
+/* ========================================================================== */
+
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+const TOKEN_BYTES = 32;
 
 /* ========================================================================== */
-/* Helpers                                                                     */
+/* Public API                                                                  */
+/* ========================================================================== */
+
+exports.createSession = async ({ beekeeperId, context }) => {
+  const id = requirePositiveInt("beekeeperId", beekeeperId);
+
+  const sessionToken = generateToken(TOKEN_BYTES);
+  const csrfToken = generateToken(TOKEN_BYTES);
+  const expiresAt = computeExpiration();
+
+  const row = await sessionsRepo.create({
+    beekeeperId: id,
+    sessionToken,
+    csrfToken,
+    expiresAt,
+    context,
+  });
+
+  return mapSessionRow(row);
+};
+
+exports.validateSession = async ({ sessionToken }) => {
+  if (isBlankString(sessionToken)) return null;
+
+  const sessionRow = await sessionsRepo.findByToken({ sessionToken });
+  if (!sessionRow) return null;
+
+  if (sessionRow.active !== true) return null;
+
+  if (isExpired(sessionRow.expires_at)) {
+    await sessionsRepo.invalidate({ sessionId: sessionRow.id });
+    return null;
+  }
+
+  const userRow = await usersRepo.findById({ id: sessionRow.beekeeper_id });
+  if (!userRow) {
+    await sessionsRepo.invalidate({ sessionId: sessionRow.id });
+    return null;
+  }
+
+  // Touch only after full validation
+  await sessionsRepo.touch({ sessionId: sessionRow.id });
+
+  return {
+    session: mapSessionRow(sessionRow),
+    user: mapUserRow(userRow),
+  };
+};
+
+exports.invalidateSession = async ({ sessionToken }) => {
+  if (isBlankString(sessionToken)) return;
+
+  const sessionRow = await sessionsRepo.findByToken({ sessionToken });
+  if (!sessionRow) return;
+
+  await sessionsRepo.invalidate({ sessionId: sessionRow.id });
+};
+
+exports.invalidateAllSessionsForUser = async ({ beekeeperId }) => {
+  const id = requirePositiveInt("beekeeperId", beekeeperId);
+  await sessionsRepo.invalidateAllForBeekeeper({ beekeeperId: id });
+};
+
+/* ========================================================================== */
+/* Time                                                                        */
 /* ========================================================================== */
 
 function now() {
@@ -40,27 +109,21 @@ function isExpired(expiresAt) {
   return Number.isNaN(exp.getTime()) || exp <= now();
 }
 
-function generateToken(bytes = 32) {
+/* ========================================================================== */
+/* Tokens                                                                      */
+/* ========================================================================== */
+
+function generateToken(bytes) {
   return crypto.randomBytes(bytes).toString("hex");
-}
-
-function badRequest(message) {
-  const err = new Error(message);
-  err.status = 400;
-  return err;
-}
-
-function assertPositiveInt(value, field) {
-  const n = Number(value);
-  if (!Number.isInteger(n) || n <= 0) {
-    throw badRequest(`${field} must be a positive integer`);
-  }
-  return n;
 }
 
 function isBlankString(v) {
   return typeof v !== "string" || v.trim() === "";
 }
+
+/* ========================================================================== */
+/* Mapping                                                                     */
+/* ========================================================================== */
 
 function mapSessionRow(row) {
   return {
@@ -84,85 +147,28 @@ function mapUserRow(row) {
 }
 
 /* ========================================================================== */
-/* API                                                                         */
+/* Validation                                                                  */
 /* ========================================================================== */
 
-/**
- * Create and persist a new session for a user.
- * Allows multiple concurrent sessions by design.
- *
- * context is optional metadata (ip, userAgent, etc.) to persist if repo supports it.
- */
-exports.createSession = async ({ beekeeperId, context }) => {
-  const id = assertPositiveInt(beekeeperId, "beekeeperId");
-
-  const sessionToken = generateToken(32);
-  const csrfToken = generateToken(32);
-  const expiresAt = computeExpiration();
-
-  const row = await sessionsRepo.create({
-    beekeeperId: id,
-    sessionToken,
-    csrfToken,
-    expiresAt,
-    context, // pass through (repo can ignore if not used)
-  });
-
-  return mapSessionRow(row);
-};
-
-/**
- * Validate a session token and return its context.
- *
- * Returns:
- * - null if missing, inactive, expired, or orphaned
- * - { session, user } if valid
- */
-exports.validateSession = async ({ sessionToken }) => {
-  if (isBlankString(sessionToken)) return null;
-
-  const sessionRow = await sessionsRepo.findByToken(sessionToken);
-  if (!sessionRow) return null;
-
-  if (sessionRow.active !== true) return null;
-
-  if (isExpired(sessionRow.expires_at)) {
-    // best-effort cleanup; if this throws, it's a DB problem (bubble up)
-    await sessionsRepo.invalidate(sessionRow.id);
-    return null;
+function requirePositiveInt(field, value) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw badRequest(`${field} must be a positive integer`);
   }
+  return n;
+}
 
-  const userRow = await usersRepo.findById(sessionRow.beekeeper_id);
-  if (!userRow) {
-    await sessionsRepo.invalidate(sessionRow.id);
-    return null;
-  }
+/* ========================================================================== */
+/* Errors                                                                      */
+/* ========================================================================== */
 
-  // Touch only after full validation
-  await sessionsRepo.touch(sessionRow.id);
+function httpError(status, code, message) {
+  const err = new Error(message);
+  err.status = status;
+  err.code = code;
+  return err;
+}
 
-  return {
-    session: mapSessionRow(sessionRow),
-    user: mapUserRow(userRow),
-  };
-};
-
-/**
- * Invalidate a single session by token (no-op if not found).
- */
-exports.invalidateSession = async ({ sessionToken }) => {
-  if (isBlankString(sessionToken)) return;
-
-  const sessionRow = await sessionsRepo.findByToken(sessionToken);
-  if (!sessionRow) return;
-
-  await sessionsRepo.invalidate(sessionRow.id);
-};
-
-/**
- * Invalidate all sessions for a user.
- */
-exports.invalidateAllSessionsForUser = async ({ beekeeperId }) => {
-  const id = assertPositiveInt(beekeeperId, "beekeeperId");
-  await sessionsRepo.invalidateAllForBeekeeper(id);
-};
+function badRequest(message) {
+  return httpError(400, "VALIDATION_ERROR", message);
+}

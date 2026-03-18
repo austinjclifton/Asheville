@@ -9,45 +9,45 @@ const hivesController = require("../controllers/hives.controller.js");
 const devicesController = require("../controllers/devices.controller.js");
 
 /**
- * POST /api/hives
- * Create a hive for the authenticated beekeeper.
- */
-router.post("/", requireAuth, requireCsrf, hivesController.create);
-
-/**
  * GET /api/hives
- * List hives for the authenticated beekeeper.
+ * Lists all hives for the authenticated beekeeper
  */
 router.get("/", requireAuth, hivesController.list);
 
 /**
  * GET /api/hives/:id
- * Get a single hive by id (scoped).
+ * Gets a single hive by its Id
  */
 router.get("/:id", requireAuth, hivesController.getById);
 
 /**
+ * GET /api/hives/:hiveId/devices
+ * Lists all *DEVICES* that belong to a hive
+ */
+router.get("/:hiveId/devices", requireAuth, devicesController.listForHive);
+
+/**
+ * POST /api/hives
+ * Creates a hive for the authenticated beekeeper
+ */
+router.post("/", requireAuth, requireCsrf, hivesController.create);
+
+/**
+ * POST /api/hives/:hiveId/devices
+ * Create a *DEVICE* under a hive (scoped hence why its in this file)
+ */
+router.post("/:hiveId/devices", requireAuth, requireCsrf, devicesController.createForHive);
+
+/**
  * PATCH /api/hives/:id
- * Patch/update hive fields (scoped).
+ * Updates hive fields by its Id
  */
 router.patch("/:id", requireAuth, requireCsrf, hivesController.update);
 
 /**
  * DELETE /api/hives/:id
- * Delete a hive (scoped).
+ * Deletes a hive by its Id
  */
 router.delete("/:id", requireAuth, requireCsrf, hivesController.remove);
-
-/**
- * POST /api/hives/:hiveId/devices
- * Create a device under a hive (scoped).
- */
-router.post("/:hiveId/devices", requireAuth, requireCsrf, devicesController.createForHive);
-
-/**
- * GET /api/hives/:hiveId/devices
- * List devices under a hive (scoped).
- */
-router.get("/:hiveId/devices", requireAuth, devicesController.listForHive);
 
 module.exports = router;
