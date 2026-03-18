@@ -4,6 +4,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { theme } from "./theme/theme";
 import HealthCheck from './pages/HealthCheck';
 import LoginPage from './pages/LoginPage';
+import SignUpPage from './pages/SignUpPage';
 import Dashboard from './pages/Dashboard';
 import Analytics from './pages/Analytics';
 import Alerts from './pages/Alerts';
@@ -15,13 +16,14 @@ function App() {
       <CssBaseline />
       <Router>
         <Routes>
-          <Route path="/health" element={<HealthCheck />} />
-          <Route path="/" element={<LoginPage />} />
+          <Route path="/health"    element={<HealthCheck />} />
+          <Route path="/"          element={<LoginPage />} />
+          <Route path="/signup"    element={<SignUpPage />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/analytics" element={<Analytics />} />
-          <Route path="/alerts" element={<Alerts />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/alerts"    element={<Alerts />} />
+          <Route path="/settings"  element={<Settings />} />
+          <Route path="*"          element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
     </ThemeProvider>

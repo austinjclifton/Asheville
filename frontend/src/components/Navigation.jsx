@@ -133,7 +133,6 @@ export default function Navigation() {
         {isExpanded && (
           <div>
             <div style={{ color: 'white', fontWeight: 700, fontSize: '18px', lineHeight: 1.2 }}>Asheville</div>
-            <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase' }}>North Carolina</div>
           </div>
         )}
       </div>

@@ -1,23 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navigation from "../components/Navigation";
-import { apiFetch } from '../api';
+import { apiFetch, cToF } from '../api';
+import { useAuth } from '../hooks/useAuth';
 
 const RANGE_HOURS = { '24H': 24, '7D': 24 * 7, '30D': 24 * 30 };
-
-// MOCK → NOTE: No /api/alerts endpoint exists; kept as static UI placeholder
-const SYSTEM_EVENTS = [
-  { type: 'warning', time: '01:29 PM', message: 'Internal temperature dropped below 33°C momentarily.' },
-  { type: 'info',    time: '05:29 AM', message: 'External temperature spike detected. Hive compensation active.' },
-  { type: 'info',    time: '05:29 PM', message: 'Daily sensor calibration check passed.' },
-  { type: 'system',  time: '08:00 AM', message: 'Daily automated diagnostic check completed successfully.' },
-];
-
-const EVENT_STYLES = {
-  warning: { bg: '#fffbeb', border: '#fde68a', labelBg: '#fef3c7', labelColor: '#d97706', text: 'WARNING' },
-  info:    { bg: '#f0f9ff', border: '#bae6fd', labelBg: '#e0f2fe', labelColor: '#0284c7', text: 'INFO' },
-  system:  { bg: '#f0fdf4', border: '#bbf7d0', labelBg: '#dcfce7', labelColor: '#16a34a', text: 'SYSTEM' },
-};
 
 // ── Setup Wizard ──────────────────────────────────────────────────────────────
 
@@ -83,6 +70,8 @@ function SetupWizard({ onComplete }) {
     }
   };
 
+  // Use relative path so the proxy handles it correctly in dev,
+  // and in production it resolves to the same origin as the frontend.
   const ingestUrl = `${window.location.origin}/ingest/readings`;
   const examplePayload = device ? JSON.stringify({ deviceId: String(device.id), temperature: "34.5", rssi: "-70" }, null, 2) : '';
 
@@ -202,9 +191,11 @@ function SetupWizard({ onComplete }) {
 // ── No-readings banner ────────────────────────────────────────────────────────
 
 function NoReadingsBanner({ deviceId }) {
-  const curlCmd = `curl -X POST ${window.location.origin}/ingest/readings \\
+  // Use the same origin as the page so the vite proxy routes it correctly in dev
+  const ingestUrl = `${window.location.origin}/ingest/readings`;
+  const curlCmd = `curl -X POST ${ingestUrl} \\
   -H "Content-Type: application/json" \\
-  -H "x-ingest-token: YOUR_INGEST_SECRET" \\
+  -H "x-ingest-token: <YOUR_INGEST_SECRET>" \\
   -d '{"deviceId":"${deviceId}","temperature":"34.5","rssi":"-70"}'`;
 
   return (
@@ -250,20 +241,20 @@ function DashboardChart({ data }) {
       chartRef.current = new Chart(ctx, {
         type: 'line',
         data: { labels: data.labels, datasets: [
-          { label: 'Internal', data: data.internal, borderColor: '#f5a623', borderWidth: 2.5, backgroundColor: amberGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#f5a623', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, order: 1 },
-          { label: 'External', data: data.external.some(v=>v!==null)?data.external:data.internal.map(()=>null), borderColor: '#1e2d4a', borderWidth: 2, backgroundColor: grayGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#1e2d4a', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, order: 2 },
+          { label: 'Internal (°C)', data: data.internal, borderColor: '#f5a623', borderWidth: 2.5, backgroundColor: amberGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#f5a623', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, order: 1 },
+          { label: 'External (°C)', data: data.external && data.external.some(v=>v!==null) ? data.external : data.internal.map(()=>null), borderColor: '#1e2d4a', borderWidth: 2, backgroundColor: grayGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#1e2d4a', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, order: 2 },
         ]},
         options: {
           responsive: true, maintainAspectRatio: false,
           interaction: { mode: 'index', intersect: false },
           animation: { duration: 400, easing: 'easeInOutQuart' },
           plugins: {
-            legend: { display: false },
-            tooltip: { backgroundColor: 'rgba(255,255,255,0.97)', titleColor: '#1e2d4a', bodyColor: '#64748b', borderColor: '#e2e8f0', borderWidth: 1, padding: 10, boxPadding: 5, cornerRadius: 8, callbacks: { label: c => c.parsed.y!=null ? `  ${c.dataset.label}: ${c.parsed.y.toFixed(1)}°C` : null } },
+            legend: { display: true, position: 'bottom', labels: { color: '#64748b', font: { size: 11 }, boxWidth: 12, usePointStyle: true } },
+            tooltip: { backgroundColor: 'rgba(255,255,255,0.97)', titleColor: '#1e2d4a', bodyColor: '#64748b', borderColor: '#e2e8f0', borderWidth: 1, padding: 10, boxPadding: 5, cornerRadius: 8, callbacks: { label: c => c.parsed.y!=null ? `  ${c.dataset.label}: ${c.parsed.y.toFixed(1)}` : null } },
           },
           scales: {
             x: { grid: { color: 'rgba(100,116,139,0.10)', lineWidth: 1, borderDash: [4,4] }, border: { display: false }, ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxTicksLimit: 9, maxRotation: 0 } },
-            y: { position: 'left', grid: { color: 'rgba(100,116,139,0.10)', lineWidth: 1, borderDash: [4,4] }, border: { display: false }, ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxTicksLimit: 6 }, min: 0 },
+            y: { position: 'left', grid: { color: 'rgba(100,116,139,0.10)', lineWidth: 1, borderDash: [4,4] }, border: { display: false }, ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxTicksLimit: 6, callback: v => `${v}°C` }, min: 0 },
           },
         },
       });
@@ -281,8 +272,13 @@ function DashboardChart({ data }) {
 
 // ── Temp Card ─────────────────────────────────────────────────────────────────
 
-function TempCard({ title, value, delta, sensor, accentColor, Icon }) {
+function TempCard({ title, value, unit, delta, sensor, accentColor, Icon }) {
   const isNeg = delta < 0;
+  const isZero = delta === 0;
+  // value is null when no reading exists yet — show a proper placeholder instead
+  // of rendering null/undefined or an em-dash at 42px which looks like a line
+  const hasValue = value !== null && value !== undefined && value !== '…';
+
   return (
     <div style={{ background: 'white', borderRadius: '12px', overflow: 'hidden', flex: 1, boxShadow: 'var(--shadow-sm)' }}>
       <div style={{ height: '3px', background: accentColor }} />
@@ -292,14 +288,25 @@ function TempCard({ title, value, delta, sensor, accentColor, Icon }) {
             <span style={{ color: accentColor, display: 'flex', alignItems: 'center' }}><Icon /></span>
             <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.07em', textTransform: 'uppercase' }}>{title}</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: isNeg ? '#ef4444' : '#94a3b8', background: isNeg ? '#fef2f2' : '#f1f5f9', padding: '3px 9px', borderRadius: '6px', lineHeight: 1 }}>
-            {isNeg ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><polygon points="12,18 4,6 20,6" fill="#ef4444" transform="rotate(180,12,12)"/></svg> : <svg width="8" height="8" viewBox="0 0 8 8"><rect width="8" height="8" rx="1" fill="#94a3b8"/></svg>}
-            {Math.abs(delta).toFixed(1)}°C
+          {hasValue && !isZero && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: isNeg ? '#ef4444' : '#22c55e', background: isNeg ? '#fef2f2' : '#f0fdf4', padding: '3px 9px', borderRadius: '6px', lineHeight: 1 }}>
+              {isNeg ? '▼' : '▲'} {Math.abs(delta).toFixed(1)}°C
+            </div>
+          )}
+        </div>
+
+        {hasValue ? (
+          <div style={{ fontSize: '42px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.03em', lineHeight: 1, display: 'flex', alignItems: 'baseline', gap: '3px' }}>
+            {value}
+            <span style={{ fontSize: '18px', fontWeight: 500, color: '#64748b' }}>{unit || '°C'}</span>
           </div>
-        </div>
-        <div style={{ fontSize: '42px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.03em', lineHeight: 1, display: 'flex', alignItems: 'baseline', gap: '3px' }}>
-          {value}<span style={{ fontSize: '18px', fontWeight: 500, color: '#64748b' }}>°C</span>
-        </div>
+        ) : (
+          <div style={{ paddingTop: '4px', paddingBottom: '4px' }}>
+            <div style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>No reading yet</div>
+            <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '3px' }}>Waiting for sensor data</div>
+          </div>
+        )}
+
         <div style={{ marginTop: '10px', fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>{sensor}</div>
       </div>
     </div>
@@ -309,10 +316,82 @@ function TempCard({ title, value, delta, sensor, accentColor, Icon }) {
 const ThermIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>;
 const WindIcon  = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>;
 
+// ── System Events from API readings ──────────────────────────────────────────
+
+function SystemEventList({ hiveId }) {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!hiveId) { setLoading(false); return; }
+    const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    apiFetch(`/api/readings/since?hiveId=${hiveId}&since=${since}&order=desc&limit=5`)
+      .then(res => {
+        const readings = res?.readings ?? [];
+        // Build simple events from readings
+        const mapped = readings.map(r => {
+          const tc = parseFloat(r.temperature_c);
+          let type = 'info';
+          let msg = `Temperature reading: ${tc.toFixed(1)}°C`;
+          if (tc < 33) { type = 'warning'; msg = `Low temperature detected: ${tc.toFixed(1)}°C`; }
+          else if (tc > 37) { type = 'warning'; msg = `High temperature detected: ${tc.toFixed(1)}°C`; }
+          const d = new Date(r.bucket_at);
+          return {
+            type,
+            time: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            message: msg,
+          };
+        });
+        setEvents(mapped);
+      })
+      .catch(() => setEvents([]))
+      .finally(() => setLoading(false));
+  }, [hiveId]);
+
+  const EVENT_STYLES = {
+    warning: { bg: '#fffbeb', border: '#fde68a', labelBg: '#fef3c7', labelColor: '#d97706', text: 'WARNING' },
+    info:    { bg: '#f0f9ff', border: '#bae6fd', labelBg: '#e0f2fe', labelColor: '#0284c7', text: 'INFO' },
+    system:  { bg: '#f0fdf4', border: '#bbf7d0', labelBg: '#dcfce7', labelColor: '#16a34a', text: 'SYSTEM' },
+  };
+
+  if (loading) {
+    return <div style={{ padding: '20px', color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>Loading events…</div>;
+  }
+
+  if (events.length === 0) {
+    return (
+      <div style={{ padding: '20px', color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>
+        No recent readings. Send data from your sensor to see events here.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {events.map((evt, i) => {
+        const s = EVENT_STYLES[evt.type] || EVENT_STYLES.info;
+        return (
+          <div key={i} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: '10px', padding: '11px 13px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, background: s.labelBg, color: s.labelColor, padding: '2px 8px', borderRadius: '4px', letterSpacing: '0.05em' }}>{s.text}</span>
+              <span style={{ fontSize: '10px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                {evt.time}
+              </span>
+            </div>
+            <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.45 }}>{evt.message}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { ready: authReady, error: authError } = useAuth();
   const [showSetup, setShowSetup] = useState(false);
   const [latest, setLatest] = useState(null);
   const [externalCondition, setExternalCondition] = useState(null);
@@ -321,12 +400,14 @@ export default function Dashboard() {
   const [timeRange, setTimeRange] = useState('24H');
   const [hive, setHive] = useState(null);
   const [device, setDevice] = useState(null);
-  // CHANGED: was `useState(() => generateDummyData('24H'))` — now starts null, no fake data
   const [chartData, setChartData] = useState(null);
   const [hasRealReadings, setHasRealReadings] = useState(false);
   const hiveIdRef = useRef(null);
 
   useEffect(() => {
+    if (!authReady) return;
+    if (authError) { setLoading(false); return; }
+
     async function load() {
       try {
         const hivesRes = await apiFetch('/api/hives');
@@ -355,41 +436,60 @@ export default function Dashboard() {
 
         await fetchChartData(foundHive.id, '24H');
       } catch {
-        // CHANGED: no longer falls back to generateDummyData — shows null state
         setChartData(null);
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, []);
+  }, [authReady, authError]);
 
   const fetchChartData = useCallback(async (hid, range) => {
     const id = hid ?? hiveIdRef.current;
-    // CHANGED: was `setChartData(generateDummyData(range))` — now sets null when no hive
     if (!id) { setChartData(null); return; }
     setChartLoading(true);
     try {
       const since = new Date(Date.now() - RANGE_HOURS[range] * 3600 * 1000).toISOString();
-      const res = await apiFetch(`/api/readings/since?hiveId=${id}&since=${since}&order=asc&limit=200`);
-      const readings = res?.readings ?? [];
+      const [readingsRes, extRes] = await Promise.allSettled([
+        apiFetch(`/api/readings/since?hiveId=${id}&since=${since}&order=asc&limit=200`),
+        apiFetch(`/api/external-conditions/since?hiveId=${id}&since=${since}&order=asc`),
+      ]);
+
+      const readings = readingsRes.status === 'fulfilled' ? (readingsRes.value?.readings ?? []) : [];
+      const externalConditions = extRes.status === 'fulfilled' ? (extRes.value?.externalConditions ?? []) : [];
+
       if (readings.length > 1) {
+        const extByTs = {};
+        externalConditions.forEach(ec => {
+          const ts = Math.floor(new Date(ec.bucket_at).getTime() / (10 * 60 * 1000));
+          extByTs[ts] = ec.temp_c;
+        });
+
         const labels = readings.map(r => {
           const d = new Date(r.bucket_at);
-          return range === '24H' ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+          return range === '24H'
+            ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
         });
         const internal = readings.map(r => parseFloat(parseFloat(r.temperature_c ?? 0).toFixed(2)));
-        setChartData({ labels, internal, external: internal.map(() => null) });
+        const external = readings.map(r => {
+          const ts = Math.floor(new Date(r.bucket_at).getTime() / (10 * 60 * 1000));
+          for (const offset of [0, 1, -1]) {
+            const val = extByTs[ts + offset];
+            if (val !== undefined && val !== null) return parseFloat(parseFloat(val).toFixed(2));
+          }
+          return null;
+        });
+        setChartData({ labels, internal, external });
         setHasRealReadings(true);
       } else {
-        // CHANGED: was `setChartData(generateDummyData(range))` — now null; empty state rendered below
         setChartData(null);
       }
     } catch {
-      // CHANGED: was `setChartData(generateDummyData(range))` — now null on error
       setChartData(null);
+    } finally {
+      setChartLoading(false);
     }
-    finally { setChartLoading(false); }
   }, []);
 
   const handleRangeChange = r => { setTimeRange(r); fetchChartData(hiveIdRef.current, r); };
@@ -401,7 +501,6 @@ export default function Dashboard() {
     fetchChartData(newHive.id, '24H');
   };
 
-  // CHANGED: was defaulting to 34.7 and 18.7 — now null when no real data
   const latestC = latest?.temperature_c != null
     ? parseFloat(parseFloat(latest.temperature_c).toFixed(1))
     : null;
@@ -409,15 +508,20 @@ export default function Dashboard() {
     ? parseFloat(parseFloat(externalCondition.temp_c).toFixed(1))
     : null;
 
-  // CHANGED: was hardcoded 0.1 — now computed from the last two real chart readings
   const internalDelta = !loading && chartData?.internal?.length >= 2
     ? parseFloat((
         chartData.internal[chartData.internal.length - 1] -
         chartData.internal[chartData.internal.length - 2]
       ).toFixed(1))
     : 0;
-  // External delta: no historical endpoint available — remains 0 until an API is added
-  const externalDelta = 0;
+
+  const externalDelta = !loading && chartData?.external?.length >= 2
+    ? (() => {
+        const extVals = chartData.external.filter(v => v !== null);
+        if (extVals.length >= 2) return parseFloat((extVals[extVals.length - 1] - extVals[extVals.length - 2]).toFixed(1));
+        return 0;
+      })()
+    : 0;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
@@ -428,29 +532,37 @@ export default function Dashboard() {
         <div style={{ padding: '24px 28px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Dashboard</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500 }}>HIVE ID:</span>
+            <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500 }}>HIVE:</span>
             <span style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a' }}>
-              #{hive?.id ?? '—'}{hive?.name ? ` · ${hive.name}` : ''}
+              {loading ? 'Loading…' : hive ? `#${hive.id} · ${hive.name}` : 'No hive'}
             </span>
-            <span style={{
-              width: '8px', height: '8px', borderRadius: '50%',
-              background: hasRealReadings ? '#22c55e' : '#f59e0b',
-              display: 'inline-block',
-              boxShadow: `0 0 0 3px ${hasRealReadings ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)'}`,
-            }} title={hasRealReadings ? 'Receiving data' : 'No readings yet'} />
+            {!loading && (
+              <span style={{
+                width: '8px', height: '8px', borderRadius: '50%',
+                background: hasRealReadings ? '#22c55e' : '#f59e0b',
+                display: 'inline-block',
+                boxShadow: `0 0 0 3px ${hasRealReadings ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)'}`,
+              }} title={hasRealReadings ? 'Receiving data' : 'No readings yet'} />
+            )}
           </div>
         </div>
 
-        {!loading && hive && device && !hasRealReadings && <NoReadingsBanner deviceId={device.id} />}
+        {!loading && hive && !hasRealReadings && (
+          device
+            ? <NoReadingsBanner deviceId={device.id} />
+            : (
+              <div style={{ margin: '0 28px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '14px 20px', fontSize: '13px', color: '#1d4ed8', fontWeight: 500 }}>
+                No device is registered to this hive yet. Use the setup flow to register a sensor, then send readings to see data here.
+              </div>
+            )
+        )}
 
         <div style={{ padding: '0 28px 28px' }}>
           <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
-            {/* CHANGED: value no longer falls back to fake 34.7 / 18.7 — shows '—' when null */}
-            {/* CHANGED: delta no longer hardcoded 0.1/-1.2 — computed from real chart data */}
-            {/* CHANGED: sensor label uses real device id; external uses provider from API */}
             <TempCard
               title="Internal Temperature"
-              value={loading ? '…' : (latestC ?? '—')}
+              value={loading ? '…' : latestC}
+              unit="°C"
               delta={internalDelta}
               sensor={device ? `Device ${device.id}` : 'No device registered'}
               accentColor="#f5a623"
@@ -458,7 +570,8 @@ export default function Dashboard() {
             />
             <TempCard
               title="External Temperature"
-              value={loading ? '…' : (externalC ?? '—')}
+              value={loading ? '…' : externalC}
+              unit="°C"
               delta={externalDelta}
               sensor={externalCondition?.provider ? `Provider: ${externalCondition.provider}` : 'External sensor'}
               accentColor="#1e2d4a"
@@ -474,7 +587,7 @@ export default function Dashboard() {
                     Temperature Analysis
                     {chartLoading && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#94a3b8', fontWeight: 500, textTransform: 'none' }}>Loading…</span>}
                   </div>
-                  <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '3px' }}>Internal vs External Correlation</div>
+                  <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '3px' }}>Internal vs External Correlation (°C)</div>
                 </div>
                 <div style={{ display: 'flex', gap: '4px' }}>
                   {['24H', '7D', '30D'].map(r => (
@@ -482,7 +595,6 @@ export default function Dashboard() {
                   ))}
                 </div>
               </div>
-              {/* CHANGED: was always rendering chart (with fake data); now shows empty state when no data */}
               <div style={{ height: '290px' }}>
                 {chartData ? (
                   <DashboardChart data={chartData} />
@@ -502,24 +614,7 @@ export default function Dashboard() {
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>System Events</div>
                 <button onClick={() => navigate('/alerts')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 800, color: '#f5a623', letterSpacing: '0.05em', textTransform: 'uppercase' }}>View All</button>
               </div>
-              {/* NOTE: SYSTEM_EVENTS remains static — no /api/alerts endpoint exists */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {SYSTEM_EVENTS.map((evt, i) => {
-                  const s = EVENT_STYLES[evt.type];
-                  return (
-                    <div key={i} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: '10px', padding: '11px 13px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 800, background: s.labelBg, color: s.labelColor, padding: '2px 8px', borderRadius: '4px', letterSpacing: '0.05em' }}>{s.text}</span>
-                        <span style={{ fontSize: '10px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                          {evt.time}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.45 }}>{evt.message}</div>
-                    </div>
-                  );
-                })}
-              </div>
+              <SystemEventList hiveId={hive?.id} />
             </div>
           </div>
         </div>

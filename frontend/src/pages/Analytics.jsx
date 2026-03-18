@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Navigation from "../components/Navigation";
 import { apiFetch } from '../api';
-
-// CHANGED: generateData() dummy function removed entirely —
-// all data now comes from /api/readings/since and /api/external-conditions/since
+import { useAuth } from '../hooks/useAuth';
 
 function buildChartDataFromAPI(readings, externalConditions) {
   if (!readings || readings.length === 0) return null;
@@ -41,7 +39,7 @@ function buildChartDataFromAPI(readings, externalConditions) {
   readings.forEach((r, i) => {
     const day = new Date(r.bucket_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     if (!dayMap[day]) dayMap[day] = { temps: [], extTemps: [] };
-    dayMap[day].temps.push(r.temperature_c);
+    dayMap[day].temps.push(parseFloat(r.temperature_c));
     const extT = externalAvg[i];
     if (extT !== null) dayMap[day].extTemps.push(extT);
   });
@@ -54,6 +52,8 @@ function buildChartDataFromAPI(readings, externalConditions) {
     const extMin = extTemps.length ? Math.min(...extTemps) : null;
     const extMax = extTemps.length ? Math.max(...extTemps) : null;
     const diffVal = extAvgVal !== null ? intAvgVal - extAvgVal : null;
+    // Healthy hive internal should be ~33–37°C; difference from ambient typically 10–20°C
+    const isNormal = diffVal !== null ? (diffVal >= 5 && diffVal <= 25) : true;
     return {
       date,
       intAvg: `${intAvgVal.toFixed(1)}°C`,
@@ -61,7 +61,7 @@ function buildChartDataFromAPI(readings, externalConditions) {
       extAvg: extAvgVal !== null ? `${extAvgVal.toFixed(1)}°C` : 'N/A',
       extRange: extMin !== null ? `${extMin.toFixed(1)}–${extMax.toFixed(1)}°C` : 'N/A',
       diff: diffVal !== null ? `${diffVal.toFixed(1)}°C` : 'N/A',
-      status: diffVal !== null && diffVal > 18 ? 'Normal' : 'Warning',
+      status: isNormal ? 'Normal' : 'Warning',
     };
   });
 
@@ -84,7 +84,7 @@ function AnalyticsChart({ data, view }) {
         ? [
             {
               type: 'bar',
-              label: 'Temp Difference',
+              label: 'Temp Difference (°C)',
               data: data.tempDiff,
               backgroundColor: 'rgba(34,197,94,0.75)',
               borderWidth: 0,
@@ -95,7 +95,7 @@ function AnalyticsChart({ data, view }) {
             },
             {
               type: 'line',
-              label: 'Internal Avg',
+              label: 'Internal Avg (°C)',
               data: data.internalAvg,
               borderColor: '#f5a623',
               borderWidth: 2.5,
@@ -109,7 +109,7 @@ function AnalyticsChart({ data, view }) {
             },
             {
               type: 'line',
-              label: 'External Avg',
+              label: 'External Avg (°C)',
               data: data.externalAvg,
               borderColor: '#1e2d4a',
               borderWidth: 2,
@@ -126,7 +126,7 @@ function AnalyticsChart({ data, view }) {
         : [
             {
               type: 'line',
-              label: 'Internal Avg',
+              label: 'Internal Avg (°C)',
               data: data.internalAvg,
               borderColor: '#f5a623',
               borderWidth: 2.5,
@@ -138,7 +138,7 @@ function AnalyticsChart({ data, view }) {
             },
             {
               type: 'line',
-              label: 'External Avg',
+              label: 'External Avg (°C)',
               data: data.externalAvg,
               borderColor: '#1e2d4a',
               borderWidth: 2,
@@ -178,7 +178,7 @@ function AnalyticsChart({ data, view }) {
               padding: 10,
               cornerRadius: 8,
               callbacks: {
-                label: (c) => c.parsed.y != null ? `  ${c.dataset.label}: ${c.parsed.y.toFixed(1)}°C` : null,
+                label: (c) => c.parsed.y != null ? `  ${c.dataset.label}: ${c.parsed.y.toFixed(1)}` : null,
               },
             },
           },
@@ -198,7 +198,12 @@ function AnalyticsChart({ data, view }) {
               position: 'left',
               grid: { color: 'rgba(100,116,139,0.10)', borderDash: [3,3] },
               border: { display: false },
-              ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxTicksLimit: 6 },
+              ticks: {
+                color: '#94a3b8',
+                font: { size: 10, family: "'DM Sans', system-ui" },
+                maxTicksLimit: 6,
+                callback: v => `${v}°C`,
+              },
               min: 0,
             },
           },
@@ -222,10 +227,16 @@ function AnalyticsChart({ data, view }) {
 }
 
 function StatCard({ label, value, sub }) {
+  // value is null when no data exists — an em-dash at 26px bold looks like a line
+  const hasValue = value !== null && value !== undefined && value !== '—';
   return (
     <div style={{ background: 'white', borderRadius: '12px', padding: '18px 20px', boxShadow: 'var(--shadow-sm)' }}>
       <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>{label}</div>
-      <div style={{ fontSize: '26px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.02em' }}>{value}</div>
+      {hasValue ? (
+        <div style={{ fontSize: '26px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.02em' }}>{value}</div>
+      ) : (
+        <div style={{ fontSize: '13px', fontWeight: 500, color: '#cbd5e1', paddingTop: '2px', paddingBottom: '2px' }}>No data</div>
+      )}
       {sub && <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>{sub}</div>}
     </div>
   );
@@ -249,11 +260,10 @@ function exportToCSV(summaries, range) {
 }
 
 export default function Analytics() {
+  const { ready: authReady, error: authError } = useAuth();
   const [range, setRange] = useState('7D');
   const [view, setView] = useState('comparison');
-  // CHANGED: was `useState(() => generateData(7))` — now null until real API data arrives
   const [chartData, setChartData] = useState(null);
-  // CHANGED: was `useState(() => generateData(7).summaries)` — now empty array
   const [allSummaries, setAllSummaries] = useState([]);
   const [filterIdx, setFilterIdx] = useState(0);
   const [visibleCount, setVisibleCount] = useState(5);
@@ -262,7 +272,9 @@ export default function Analytics() {
 
   const hiveIdRef = useRef(null);
 
+  // Only fetch hive data once the auth/session is confirmed ready
   useEffect(() => {
+    if (!authReady || authError) return;
     apiFetch('/api/hives')
       .then(res => {
         const hives = res?.hives ?? [];
@@ -270,12 +282,9 @@ export default function Analytics() {
           hiveIdRef.current = hives[0].id;
           loadData('7D', hives[0].id);
         }
-        // CHANGED: when no hive exists, we leave chartData null — no fake data shown
       })
-      .catch(() => {
-        // CHANGED: on error, leave null — no fake data shown
-      });
-  }, []);
+      .catch(() => {});
+  }, [authReady, authError]);
 
   const loadData = useCallback(async (selectedRange, hiveId) => {
     const id = hiveId ?? hiveIdRef.current;
@@ -299,11 +308,9 @@ export default function Analytics() {
         : [];
 
       const realData = buildChartDataFromAPI(readings, externalConditions);
-      // CHANGED: no longer falls back to generateData — uses null to show empty state
       setChartData(realData ?? null);
       setAllSummaries(realData?.summaries ?? []);
     } catch {
-      // CHANGED: on error, set null — no fake data
       setChartData(null);
       setAllSummaries([]);
     } finally {
@@ -313,15 +320,15 @@ export default function Analytics() {
   }, []);
 
   useEffect(() => {
+    if (!authReady || authError) return;
     if (hiveIdRef.current) {
       loadData(range, hiveIdRef.current);
     } else {
-      // CHANGED: was setting generateData() — now sets null when no hive
       setChartData(null);
       setAllSummaries([]);
       setVisibleCount(5);
     }
-  }, [range, loadData]);
+  }, [range, loadData, authReady, authError]);
 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
@@ -344,13 +351,12 @@ export default function Analytics() {
   const visibleSummaries = filteredSummaries.slice(0, visibleCount);
   const hasMore = visibleCount < filteredSummaries.length;
 
-  // CHANGED: all stat computations now guard against null/empty chartData
   const intVals = chartData?.internalAvg ?? [];
   const extVals = (chartData?.externalAvg ?? []).filter(v => v !== null);
-  const intAvg  = intVals.length ? (intVals.reduce((a, b) => a + b, 0) / intVals.length).toFixed(1) : '—';
-  const intMin  = intVals.length ? Math.min(...intVals).toFixed(1) : '—';
-  const intMax  = intVals.length ? Math.max(...intVals).toFixed(1) : '—';
-  const extAvg  = extVals.length ? (extVals.reduce((a, b) => a + b, 0) / extVals.length).toFixed(1) : '—';
+  const intAvg  = intVals.length ? (intVals.reduce((a, b) => a + b, 0) / intVals.length).toFixed(1) : null;
+  const intMin  = intVals.length ? Math.min(...intVals).toFixed(1) : null;
+  const intMax  = intVals.length ? Math.max(...intVals).toFixed(1) : null;
+  const extAvg  = extVals.length ? (extVals.reduce((a, b) => a + b, 0) / extVals.length).toFixed(1) : null;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
@@ -407,29 +413,28 @@ export default function Analytics() {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              Export
+              Export CSV
             </button>
           </div>
         </div>
 
         <div style={{ padding: '0 28px 28px' }}>
-          {/* CHANGED: stat cards now show '—' instead of fake numbers when no data */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px' }}>
             <StatCard
-              label="Int. Avg Temp"
-              value={intAvg !== '—' ? `${intAvg}°C` : intAvg}
-              sub={intAvg !== '—' ? `±${(parseFloat(intMax) - parseFloat(intMin)).toFixed(1)}°C variance` : 'No data for range'}
+              label="Internal Avg Temp"
+              value={intAvg !== null ? `${intAvg}°C` : null}
+              sub={intAvg !== null ? `±${(parseFloat(intMax) - parseFloat(intMin)).toFixed(1)}°C variance` : 'No data for range'}
             />
-            <StatCard label="Int. Min Temp" value={intMin !== '—' ? `${intMin}°C` : intMin} sub="Over selected range" />
-            <StatCard label="Int. Max Temp" value={intMax !== '—' ? `${intMax}°C` : intMax} sub="Over selected range" />
-            <StatCard label="Ext. Avg Temp" value={extAvg !== '—' ? `${extAvg}°C` : extAvg} sub="Ambient sensor" />
+            <StatCard label="Internal Min Temp" value={intMin !== null ? `${intMin}°C` : null} sub="Over selected range" />
+            <StatCard label="Internal Max Temp" value={intMax !== null ? `${intMax}°C` : null} sub="Over selected range" />
+            <StatCard label="External Avg Temp" value={extAvg !== null ? `${extAvg}°C` : null} sub="Ambient sensor" />
           </div>
 
           <div style={{ background: 'white', borderRadius: '12px', padding: '22px', boxShadow: 'var(--shadow-sm)', marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Beehive Temperature Analytics</div>
-                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>Comparing internal retention vs external ambient</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>Comparing internal retention vs external ambient (°C)</div>
               </div>
               <div style={{ display: 'flex', gap: '4px' }}>
                 {['comparison', 'ranges'].map(v => (
@@ -444,7 +449,6 @@ export default function Analytics() {
                 ))}
               </div>
             </div>
-            {/* CHANGED: was always rendering <AnalyticsChart> — now shows loading/empty state when no data */}
             <div style={{ height: '340px' }}>
               {dataLoading || !chartData ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: '10px' }}>
@@ -508,7 +512,6 @@ export default function Analytics() {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* CHANGED: was rendering fake rows — now shows real data or an empty-state row */}
                   {visibleSummaries.length === 0 ? (
                     <tr>
                       <td colSpan="7" style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>

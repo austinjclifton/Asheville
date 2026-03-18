@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
-
+ 
 function HealthCheck() {
   const [status, setStatus] = useState(null);
-
+ 
   useEffect(() => {
     fetch("/api/health")
       .then((res) => res.json())
       .then((data) => setStatus(data))
-      .catch(() => setStatus({ ok: false, service: "Backend not connected" }));
+      .catch(() => setStatus({ status: 'error', service: "Backend not connected" }));
   }, []);
-
+ 
+  const isHealthy = status?.status === 'ok';
+ 
   return (
     <div style={{
       minHeight: '100vh',
@@ -40,15 +42,15 @@ function HealthCheck() {
             </svg>
           </div>
           <div>
-            <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--navy)' }}>Team Asheville</div>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--navy)' }}>Asheville</div>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>System Health Check</div>
           </div>
         </div>
-
+ 
         {!status ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
             <span style={{ animation: 'pulse 1s infinite', fontSize: '20px' }}>⏳</span>
-            <span style={{ fontSize: '14px' }}>Checking system status...</span>
+            <span style={{ fontSize: '14px' }}>Checking system status…</span>
           </div>
         ) : (
           <div>
@@ -56,30 +58,45 @@ function HealthCheck() {
               display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px',
               padding: '12px 14px',
               borderRadius: '10px',
-              background: status.ok !== false ? '#f0fdf4' : '#fef2f2',
-              border: `1px solid ${status.ok !== false ? '#bbf7d0' : '#fecaca'}`,
+              background: isHealthy ? '#f0fdf4' : '#fef2f2',
+              border: `1px solid ${isHealthy ? '#bbf7d0' : '#fecaca'}`,
             }}>
-              <span style={{ fontSize: '16px' }}>{status.ok !== false ? '✅' : '❌'}</span>
-              <span style={{ fontSize: '14px', fontWeight: 600, color: status.ok !== false ? '#16a34a' : '#dc2626' }}>
-                {status.ok !== false ? 'System Healthy' : 'System Error'}
+              <span style={{ fontSize: '16px' }}>{isHealthy ? '✅' : '❌'}</span>
+              <span style={{ fontSize: '14px', fontWeight: 600, color: isHealthy ? '#16a34a' : '#dc2626' }}>
+                {isHealthy ? 'System Healthy' : 'System Error'}
               </span>
             </div>
-
-            {status.service && (
-              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                <strong>Service:</strong> {status.service}
-              </div>
-            )}
-            {status.time && (
-              <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                <strong>Server time:</strong> {status.time}
-              </div>
-            )}
+ 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {status.db && (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  <strong>Database:</strong>{' '}
+                  <span style={{ color: status.db === 'ok' ? '#16a34a' : '#dc2626', fontWeight: 600 }}>
+                    {status.db === 'ok' ? 'Connected' : 'Unreachable'}
+                  </span>
+                </div>
+              )}
+              {status.uptime_s !== undefined && (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  <strong>Uptime:</strong> {Math.floor(status.uptime_s / 60)}m {status.uptime_s % 60}s
+                </div>
+              )}
+              {status.timestamp && (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  <strong>Server time:</strong> {new Date(status.timestamp).toLocaleString()}
+                </div>
+              )}
+              {status.service && (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  <strong>Service:</strong> {status.service}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
     </div>
   );
 }
-
+ 
 export default HealthCheck;

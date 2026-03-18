@@ -1,70 +1,102 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Navigation from "../components/Navigation";
+import { apiFetch } from '../api';
+import { useAuth } from '../hooks/useAuth';
 
-const INITIAL_ALERTS = [
-  {
-    id: 1,
-    severity: 'critical',
-    status: 'active',
-    title: 'Temperature Below Critical Threshold',
-    description: 'Hive temperature dropped to 88.2°F, which is below the safe operating range. Immediate attention required.',
-    time: '2 hours ago',
-    temperature: '88.2°F',
-    type: 'Below Range',
-  },
-  {
-    id: 2,
-    severity: 'warning',
-    status: 'acknowledged',
-    title: 'Rapid Temperature Drop Detected',
-    description: 'Temperature decreased by 4.5°F within 15 minutes. Check hive insulation and external conditions.',
-    time: '4 hours ago',
-    temperature: '90.8°F',
-    type: 'Below Range',
-  },
-  {
-    id: 3,
-    severity: 'info',
-    status: 'resolved',
-    title: 'Temperature Approaching Upper Limit',
-    description: 'Current temperature at 96.8°F is approaching the upper threshold of 97°F.',
-    time: '8 hours ago',
-    temperature: '96.8°F',
-    type: 'Normal',
-  },
-  {
-    id: 4,
-    severity: 'warning',
-    status: 'active',
-    title: 'External Temperature Rising',
-    description: 'External temperature has risen to 85°F, monitor hive cooling system.',
-    time: '1 hour ago',
-    temperature: '85.0°F',
-    type: 'Warning',
-  },
-  {
-    id: 5,
-    severity: 'info',
-    status: 'resolved',
-    title: 'Temperature Stabilized',
-    description: 'Hive temperature has returned to normal operating range.',
-    time: '12 hours ago',
-    temperature: '94.2°F',
-    type: 'Normal',
-  },
-];
-
+// Severity config for rendering
 const SEVERITY_CONFIG = {
   critical: { bg: '#fef2f2', border: '#fecaca', accent: '#ef4444', label: 'CRITICAL', dot: '#ef4444' },
-  warning: { bg: '#fffbeb', border: '#fde68a', accent: '#f59e0b', label: 'WARNING', dot: '#f59e0b' },
-  info: { bg: '#eff6ff', border: '#bfdbfe', accent: '#3b82f6', label: 'INFO', dot: '#3b82f6' },
+  warning:  { bg: '#fffbeb', border: '#fde68a', accent: '#f59e0b', label: 'WARNING',  dot: '#f59e0b' },
+  info:     { bg: '#eff6ff', border: '#bfdbfe', accent: '#3b82f6', label: 'INFO',     dot: '#3b82f6' },
 };
 
 const STATUS_CONFIG = {
-  active: { bg: '#fef2f2', color: '#dc2626', label: 'Active' },
+  active:       { bg: '#fef2f2', color: '#dc2626', label: 'Active' },
   acknowledged: { bg: '#eff6ff', color: '#2563eb', label: 'Acknowledged' },
-  resolved: { bg: '#f0fdf4', color: '#16a34a', label: 'Resolved' },
+  resolved:     { bg: '#f0fdf4', color: '#16a34a', label: 'Resolved' },
 };
+
+/**
+ * Derive alert events from real sensor readings.
+ * The backend has no /api/alerts endpoint, so we synthesize alerts
+ * from recent readings using the same threshold logic as Settings.
+ */
+function deriveAlertsFromReadings(readings, prefs) {
+  if (!readings || readings.length === 0) return [];
+
+  const critLow  = parseFloat(prefs?.criticalLow  ?? '33');
+  const critHigh = parseFloat(prefs?.criticalHigh ?? '40');
+  const optLow   = parseFloat(prefs?.optimalLow   ?? '34');
+  const optHigh  = parseFloat(prefs?.optimalHigh  ?? '37');
+
+  const alerts = [];
+  let id = 1;
+
+  readings.forEach(r => {
+    const tc = parseFloat(r.temperature_c);
+    const d = new Date(r.bucket_at);
+    const timeStr = d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    if (tc < critLow) {
+      alerts.push({
+        id: id++,
+        severity: 'critical',
+        status: 'active',
+        title: 'Temperature Below Critical Threshold',
+        description: `Hive temperature dropped to ${tc.toFixed(1)}°C, below the critical low of ${critLow}°C. Immediate attention required.`,
+        time: timeStr,
+        temperature: `${tc.toFixed(1)}°C`,
+        type: 'Below Range',
+      });
+    } else if (tc > critHigh) {
+      alerts.push({
+        id: id++,
+        severity: 'critical',
+        status: 'active',
+        title: 'Temperature Above Critical Threshold',
+        description: `Hive temperature rose to ${tc.toFixed(1)}°C, above the critical high of ${critHigh}°C. Immediate attention required.`,
+        time: timeStr,
+        temperature: `${tc.toFixed(1)}°C`,
+        type: 'Above Range',
+      });
+    } else if (tc < optLow) {
+      alerts.push({
+        id: id++,
+        severity: 'warning',
+        status: 'active',
+        title: 'Temperature Below Optimal Range',
+        description: `Temperature at ${tc.toFixed(1)}°C is below the optimal low of ${optLow}°C. Monitor closely.`,
+        time: timeStr,
+        temperature: `${tc.toFixed(1)}°C`,
+        type: 'Below Range',
+      });
+    } else if (tc > optHigh) {
+      alerts.push({
+        id: id++,
+        severity: 'warning',
+        status: 'active',
+        title: 'Temperature Above Optimal Range',
+        description: `Temperature at ${tc.toFixed(1)}°C is above the optimal high of ${optHigh}°C. Monitor closely.`,
+        time: timeStr,
+        temperature: `${tc.toFixed(1)}°C`,
+        type: 'Above Range',
+      });
+    } else {
+      alerts.push({
+        id: id++,
+        severity: 'info',
+        status: 'resolved',
+        title: 'Temperature Within Normal Range',
+        description: `Temperature stable at ${tc.toFixed(1)}°C within optimal range (${optLow}–${optHigh}°C).`,
+        time: timeStr,
+        temperature: `${tc.toFixed(1)}°C`,
+        type: 'Normal',
+      });
+    }
+  });
+
+  return alerts;
+}
 
 function StatCard({ value, label, color }) {
   return (
@@ -86,10 +118,59 @@ function StatCard({ value, label, color }) {
   );
 }
 
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem('asheville_settings_v1');
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return { criticalLow: '33', criticalHigh: '40', optimalLow: '34', optimalHigh: '37' };
+}
+
 export default function Alerts() {
-  const [alerts, setAlerts] = useState(INITIAL_ALERTS);
+  const { ready: authReady, error: authError } = useAuth();
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [severityFilter, setSeverityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
+
+  useEffect(() => {
+    // Don't fetch until the session cookie and CSRF token are confirmed present
+    if (!authReady) return;
+    if (authError) {
+      setError('Authentication required. Please log in again.');
+      setLoading(false);
+      return;
+    }
+
+    async function fetchAlerts() {
+      setLoading(true);
+      setError('');
+      try {
+        const hivesRes = await apiFetch('/api/hives');
+        const hives = hivesRes?.hives ?? [];
+        if (hives.length === 0) {
+          setAlerts([]);
+          setLoading(false);
+          return;
+        }
+        const hiveId = hives[0].id;
+        // Fetch last 7 days of readings to generate alerts
+        const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+        const readingsRes = await apiFetch(`/api/readings/since?hiveId=${hiveId}&since=${since}&order=desc&limit=100`);
+        const readings = readingsRes?.readings ?? [];
+        const prefs = loadPrefs();
+        const derived = deriveAlertsFromReadings(readings, prefs);
+        setAlerts(derived);
+      } catch (err) {
+        setError(err.message || 'Failed to load activity data.');
+        setAlerts([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchAlerts();
+  }, [authReady, authError]);
 
   const filtered = alerts.filter(a => {
     const s = severityFilter === 'all' || a.severity === severityFilter;
@@ -138,17 +219,17 @@ export default function Alerts() {
             Activity
           </h1>
           <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '3px' }}>
-            {filtered.length} {filtered.length === 1 ? 'alert' : 'alerts'} found
+            {loading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'event' : 'events'} found · Based on last 7 days of sensor readings`}
           </div>
         </div>
 
         <div style={{ padding: '0 32px 32px' }}>
           {/* Stat cards */}
           <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
-            <StatCard value={stats.critical} label="Active Critical" color="#ef4444" />
-            <StatCard value={stats.warnings} label="Active Warnings" color="#f59e0b" />
-            <StatCard value={stats.resolved} label="Resolved" color="#22c55e" />
-            <StatCard value={stats.total} label="Total Alerts" color="var(--navy)" />
+            <StatCard value={loading ? '…' : stats.critical} label="Active Critical" color="#ef4444" />
+            <StatCard value={loading ? '…' : stats.warnings} label="Active Warnings" color="#f59e0b" />
+            <StatCard value={loading ? '…' : stats.resolved} label="Normal Readings" color="#22c55e" />
+            <StatCard value={loading ? '…' : stats.total} label="Total Events (7d)" color="var(--navy)" />
           </div>
 
           {/* Filters */}
@@ -180,7 +261,17 @@ export default function Alerts() {
 
           {/* Alert list */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {filtered.length === 0 ? (
+            {loading ? (
+              <div style={{ background: 'white', borderRadius: '12px', padding: '60px 24px', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}>
+                <div style={{ fontSize: '32px', marginBottom: '12px', animation: 'pulse 1s infinite' }}>⏳</div>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-secondary)' }}>Loading activity data…</div>
+              </div>
+            ) : error ? (
+              <div style={{ background: 'white', borderRadius: '12px', padding: '40px 24px', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: '#ef4444', marginBottom: '8px' }}>Error loading activity</div>
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{error}</div>
+              </div>
+            ) : filtered.length === 0 ? (
               <div style={{
                 background: 'white',
                 borderRadius: '12px',
@@ -189,9 +280,13 @@ export default function Alerts() {
                 boxShadow: 'var(--shadow-sm)',
               }}>
                 <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔕</div>
-                <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-secondary)' }}>No alerts found</div>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  {alerts.length === 0 ? 'No sensor readings found' : 'No events match these filters'}
+                </div>
                 <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  Try adjusting your filters to see more results.
+                  {alerts.length === 0
+                    ? 'Send readings from your sensor to see activity here.'
+                    : 'Try adjusting your filters to see more results.'}
                 </div>
               </div>
             ) : (
@@ -211,7 +306,7 @@ export default function Alerts() {
                     }}
                   >
                     <div style={{ padding: '18px 20px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-                      {/* Left: dot */}
+                      {/* Status dot */}
                       <div style={{
                         width: '10px', height: '10px', borderRadius: '50%',
                         background: sc.accent,
