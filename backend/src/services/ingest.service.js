@@ -40,7 +40,7 @@ exports.createReading = async ({ deviceId, temperature, rssi }) => {
   //if ingest is successful, trigger external conditions ingest for this device
   if (inserted && TRIGGER_EXTERNAL_ON_INGEST) {
     try {
-      await externalConditionsService.ingestCurrentForDevice({
+      await externalConditionsService.fetchCurrentForDevice({
         deviceId: deviceId,
       });
     } catch (e) {

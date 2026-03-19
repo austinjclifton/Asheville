@@ -35,7 +35,7 @@ exports.upsert = async ({
   provider,
   status,
   errorMessage = null,
-  tempC = null,
+  temperature = null,
   humidityPct = null,
   precipMm = null,
   windMps = null,
@@ -56,7 +56,7 @@ exports.upsert = async ({
         provider,
         status,
         error_message,
-        temp_c,
+        temperature,
         humidity_pct,
         precip_mm,
         wind_mps,
@@ -79,7 +79,7 @@ exports.upsert = async ({
         $11,
         $12,
         $13,
-        $14
+        $14::jsonb
       )
       ON CONFLICT (location_id, bucket_at)
       DO UPDATE SET
@@ -87,7 +87,7 @@ exports.upsert = async ({
         provider       = EXCLUDED.provider,
         status         = EXCLUDED.status,
         error_message  = EXCLUDED.error_message,
-        temp_c         = EXCLUDED.temp_c,
+        temperature    = EXCLUDED.temperature,
         humidity_pct   = EXCLUDED.humidity_pct,
         precip_mm      = EXCLUDED.precip_mm,
         wind_mps       = EXCLUDED.wind_mps,
@@ -104,14 +104,14 @@ exports.upsert = async ({
         provider,
         status,
         errorMessage,
-        tempC,
+        temperature,
         humidityPct,
         precipMm,
         windMps,
         windGustMps,
         pressureHpa,
         cloudPct,
-        rawJson,
+        rawJson ? JSON.stringify(rawJson) : null,
       ],
     );
 

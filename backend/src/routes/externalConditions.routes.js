@@ -21,10 +21,10 @@ router.get("/latest", requireAuth, externalConditionsController.latestForHive);
 router.get("/since", requireAuth, externalConditionsController.sinceForHive);
 
 /**
- * POST /api/external-conditions/ingest
+ * POST /api/external-conditions/fetch
  * Triggers an external fetch+upsert for a hive on a successful ingest
  * Query: hiveId=123
  */
-router.post("/ingest", requireAuth, externalConditionsController.ingestForHive);
+router.post("/fetch", requireAuth, externalConditionsController.fetchForHive);
 
 module.exports = router;

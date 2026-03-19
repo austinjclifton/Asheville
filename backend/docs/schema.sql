@@ -87,7 +87,7 @@ CREATE TABLE reading (
     REFERENCES device (id)
     ON DELETE CASCADE,
   CONSTRAINT uq_reading_device_bucket_at UNIQUE (device_id, bucket_at),
-  CONSTRAINT chk_reading_temperature_c
+  CONSTRAINT chk_reading_temperature
     CHECK (temperature > -100 AND temperature < 999),
   CONSTRAINT chk_reading_rssi_dbm
     CHECK (rssi IS NULL OR (rssi >= -200 AND rssi <= 0))
@@ -107,7 +107,7 @@ CREATE TABLE external_condition (
   provider VARCHAR(40) NOT NULL,
   status VARCHAR(16) NOT NULL DEFAULT 'pending',
   error_message TEXT,
-  temp_c DOUBLE PRECISION,
+  temperature DOUBLE PRECISION,
   humidity_pct DOUBLE PRECISION,
   precip_mm DOUBLE PRECISION,
   wind_mps DOUBLE PRECISION,

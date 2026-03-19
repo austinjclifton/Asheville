@@ -1,6 +1,7 @@
 "use strict";
 
 const hiveRepo = require("../db/hives.db.js");
+const locationRepo = require("../db/locations.db.js");
 
 /* ========================================================================== */
 /* Config                                                                      */
@@ -18,6 +19,10 @@ exports.createHive = async ({ beekeeperId, name, notes, locationId }) => {
   const nameNorm = normalizeRequiredName(name);
   const notesNorm = normalizeNotesForCreate(notes);
   const locationIdNorm = normalizeLocationIdForCreate(locationId);
+
+  if (locationIdNorm !== null) {
+    await assertLocationExists(locationIdNorm);
+  }
 
   return hiveRepo.create({
     beekeeperId,
@@ -49,6 +54,10 @@ exports.updateHive = async ({ beekeeperId, hiveId, name, notes, locationId }) =>
 
   if (nameNorm === undefined && notesNorm === undefined && locationIdNorm === undefined) {
     throw badRequest("Provide at least one field to update");
+  }
+
+  if (locationIdNorm !== undefined && locationIdNorm !== null) {
+    await assertLocationExists(locationIdNorm);
   }
 
   return hiveRepo.updateScoped({
@@ -83,6 +92,14 @@ function coercePositiveInt(value, field) {
     throw badRequest(`${field} must be a positive integer`);
   }
   return n;
+}
+
+async function assertLocationExists(locationId) {
+  const location = await locationRepo.findById({ locationId });
+
+  if (!location) {
+    throw httpError(404, "LOCATION_NOT_FOUND", "Location not found");
+  }
 }
 
 /* ========================================================================== */

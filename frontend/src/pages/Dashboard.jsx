@@ -462,7 +462,7 @@ export default function Dashboard() {
         const extByTs = {};
         externalConditions.forEach(ec => {
           const ts = Math.floor(new Date(ec.bucket_at).getTime() / (10 * 60 * 1000));
-          extByTs[ts] = ec.temp_c;
+          extByTs[ts] = ec.temperature;
         });
 
         const labels = readings.map(r => {
@@ -504,8 +504,8 @@ export default function Dashboard() {
   const latestC = latest?.temperature != null
     ? parseFloat(parseFloat(latest.temperature).toFixed(1))
     : null;
-  const externalC = externalCondition?.temp_c != null
-    ? parseFloat(parseFloat(externalCondition.temp_c).toFixed(1))
+  const externalC = externalCondition?.temperature != null
+    ? parseFloat(parseFloat(externalCondition.temperature).toFixed(1))
     : null;
 
   const internalDelta = !loading && chartData?.internal?.length >= 2
@@ -571,7 +571,7 @@ export default function Dashboard() {
             <TempCard
               title="External Temperature"
               value={loading ? '…' : externalC}
-              unit="°C"
+              unit="°F"
               delta={externalDelta}
               sensor={externalCondition?.provider ? `Provider: ${externalCondition.provider}` : 'External sensor'}
               accentColor="#1e2d4a"

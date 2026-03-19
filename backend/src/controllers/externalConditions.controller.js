@@ -1,10 +1,5 @@
 "use strict";
-
 const externalConditionsService = require("../services/externalConditions.service.js");
-
-/* ========================================================================== */
-/* GET                                                                         */
-/* ========================================================================== */
 
 /**
  * GET /api/external-conditions/latest?hiveId=123
@@ -52,19 +47,15 @@ exports.sinceForHive = async (req, res, next) => {
   }
 };
 
-/* ========================================================================== */
-/* POST                                                                        */
-/* ========================================================================== */
-
 /**
- * POST /api/external-conditions/ingest?hiveId=123
+ * POST /api/external-conditions/fetch?hiveId=123
  */
-exports.ingestForHive = async (req, res, next) => {
+exports.fetchForHive = async (req, res, next) => {
   try {
     const q = safeQuery(req);
 
     const externalCondition =
-      await externalConditionsService.ingestCurrentForHive({
+      await externalConditionsService.fetchCurrentForHive({
         beekeeperId: authedUserId(req),
         hiveId: requireQueryParamAsPositiveInt(q, "hiveId"),
       });
@@ -74,14 +65,6 @@ exports.ingestForHive = async (req, res, next) => {
     return next(err);
   }
 };
-
-/* ========================================================================== */
-/* PATCH                                                                       */
-/* ========================================================================== */
-
-/* ========================================================================== */
-/* DELETE                                                                      */
-/* ========================================================================== */
 
 /* ========================================================================== */
 /* Helpers                                                                     */

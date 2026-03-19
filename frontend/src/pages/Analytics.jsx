@@ -10,7 +10,7 @@ function buildChartDataFromAPI(readings, externalConditions) {
   if (externalConditions && externalConditions.length > 0) {
     externalConditions.forEach(ec => {
       const ts = Math.floor(new Date(ec.bucket_at).getTime() / (10 * 60 * 1000));
-      extByTs[ts] = ec.temp_c;
+      extByTs[ts] = ec.temperature;
     });
   }
 
