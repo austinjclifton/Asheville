@@ -330,7 +330,7 @@ function SystemEventList({ hiveId }) {
         const readings = res?.readings ?? [];
         // Build simple events from readings
         const mapped = readings.map(r => {
-          const tc = parseFloat(r.temperature_c);
+          const tc = parseFloat(r.temperature);
           let type = 'info';
           let msg = `Temperature reading: ${tc.toFixed(1)}°C`;
           if (tc < 33) { type = 'warning'; msg = `Low temperature detected: ${tc.toFixed(1)}°C`; }
@@ -471,7 +471,7 @@ export default function Dashboard() {
             ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
         });
-        const internal = readings.map(r => parseFloat(parseFloat(r.temperature_c ?? 0).toFixed(2)));
+        const internal = readings.map(r => parseFloat(parseFloat(r.temperature ?? 0).toFixed(2)));
         const external = readings.map(r => {
           const ts = Math.floor(new Date(r.bucket_at).getTime() / (10 * 60 * 1000));
           for (const offset of [0, 1, -1]) {
@@ -501,8 +501,8 @@ export default function Dashboard() {
     fetchChartData(newHive.id, '24H');
   };
 
-  const latestC = latest?.temperature_c != null
-    ? parseFloat(parseFloat(latest.temperature_c).toFixed(1))
+  const latestC = latest?.temperature != null
+    ? parseFloat(parseFloat(latest.temperature).toFixed(1))
     : null;
   const externalC = externalCondition?.temp_c != null
     ? parseFloat(parseFloat(externalCondition.temp_c).toFixed(1))

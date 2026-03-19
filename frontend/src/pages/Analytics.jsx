@@ -19,7 +19,7 @@ function buildChartDataFromAPI(readings, externalConditions) {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   });
 
-  const internalAvg = readings.map(r => parseFloat(parseFloat(r.temperature_c).toFixed(1)));
+  const internalAvg = readings.map(r => parseFloat(parseFloat(r.temperature).toFixed(1)));
 
   const externalAvg = readings.map(r => {
     const ts = Math.floor(new Date(r.bucket_at).getTime() / (10 * 60 * 1000));
@@ -39,7 +39,7 @@ function buildChartDataFromAPI(readings, externalConditions) {
   readings.forEach((r, i) => {
     const day = new Date(r.bucket_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     if (!dayMap[day]) dayMap[day] = { temps: [], extTemps: [] };
-    dayMap[day].temps.push(parseFloat(r.temperature_c));
+    dayMap[day].temps.push(parseFloat(r.temperature));
     const extT = externalAvg[i];
     if (extT !== null) dayMap[day].extTemps.push(extT);
   });

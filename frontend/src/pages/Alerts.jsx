@@ -33,7 +33,7 @@ function deriveAlertsFromReadings(readings, prefs) {
   let id = 1;
 
   readings.forEach(r => {
-    const tc = parseFloat(r.temperature_c);
+    const tc = parseFloat(r.temperature);
     const d = new Date(r.bucket_at);
     const timeStr = d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
