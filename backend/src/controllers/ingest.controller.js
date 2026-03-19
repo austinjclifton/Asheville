@@ -18,11 +18,8 @@ const ingestService = require("../services/ingest.service.js");
  */
 exports.create = async (req, res, next) => {
   try {
-    const payload = normalizePayload(req.body);
-
-    const deviceId = payload.deviceId;
-    const temperature = payload.temperature ?? payload.temp;
-    const rssi = payload.rssi ?? payload.signalStrength ?? payload.rssiDbm;
+    const payload = req.body;
+    const { deviceId, temperature, rssi } = payload;
 
     const result = await ingestService.createReading({
       deviceId,
@@ -30,6 +27,7 @@ exports.create = async (req, res, next) => {
       rssi,
     });
 
+    // return 409 if a reading has occured within the 10 min. bucket for this device
     if (!result.inserted) {
       return res.status(409).json({
         success: false,
@@ -38,6 +36,7 @@ exports.create = async (req, res, next) => {
       });
     }
 
+    // return 201 if the reading was successfully inserted
     return res.status(201).json({
       success: true,
       inserted: true,
@@ -47,8 +46,3 @@ exports.create = async (req, res, next) => {
     return next(err);
   }
 };
-
-function normalizePayload(body) {
-  const b = body ?? {};
-  return b.payload ?? b;
-}

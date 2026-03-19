@@ -1,17 +1,12 @@
 "use strict";
-
 const { query } = require("./pool");
-
-/* ========================================================================== */
-/* Public API                                                                  */
-/* ========================================================================== */
 
 /**
  * Insert a reading with dedupe semantics.
  *
  * Behavior:
- * - If inserted: returns { inserted: true, reading: <row> }
- * - If duplicate: returns { inserted: false, reading: <existing row> }
+ * - If inserted: returns 201 { inserted: true, reading: <row> }
+ * - If duplicate: returns 409 { inserted: false, error: <error msg> }
  */
 exports.createReadingDeduped10m = async ({
   deviceId,
