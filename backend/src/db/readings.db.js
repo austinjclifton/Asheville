@@ -32,8 +32,8 @@ exports.getHiveReadingsSince = async ({
       r.device_id,
       r.bucket_at,
       r.received_at,
-      r.temperature_c,
-      r.rssi_dbm,
+      r.temperature,
+      r.rssi,
       r.created_at
     FROM hive h
     JOIN device d
@@ -55,21 +55,26 @@ exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
   const rows = await query(
     `
     SELECT
+      h.id AS hive_id,
       r.id,
       r.device_id,
       r.bucket_at,
       r.received_at,
-      r.temperature_c,
-      r.rssi_dbm,
+      r.temperature,
+      r.rssi,
       r.created_at
     FROM hive h
-    JOIN device d
+    LEFT JOIN device d
       ON d.hive_id = h.id
-    JOIN reading r
-      ON r.device_id = d.id
+    LEFT JOIN LATERAL (
+      SELECT *
+      FROM reading
+      WHERE device_id = d.id
+      ORDER BY bucket_at DESC
+      LIMIT 1
+    ) r ON d.id IS NOT NULL
     WHERE h.beekeeper_id = $1
       AND h.id = $2
-    ORDER BY r.bucket_at DESC
     LIMIT 1
     `,
     [beekeeperId, hiveId],
@@ -101,7 +106,9 @@ exports.getLatestDailyForHive = async () => {
 /* ========================================================================== */
 
 function toOrderSql(order) {
-  const o = String(order ?? "asc").toLowerCase().trim();
+  const o = String(order ?? "asc")
+    .toLowerCase()
+    .trim();
   if (o === "asc") return "ASC";
   if (o === "desc") return "DESC";
   return "ASC";

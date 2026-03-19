@@ -1,30 +1,12 @@
 "use strict";
 
-/**
- * Ingest Service
- *
- * Responsibilities
- * - Validate ingest payload fields
- * - Compute server-side 10 minute bucket timestamp
- * - Write reading using dedupe insert
- * - Optionally trigger external conditions ingest after successful insert
- *
- * Notes
- * - This service is HTTP-agnostic
- * - Repository owns SQL and table details
- */
-
-const readingIngestRepo = require("../db/ingest.db.js");
+const ingestRepo = require("../db/ingest.db.js");
 const externalConditionsService = require("./externalConditions.service.js");
-
-/* ========================================================================== */
-/* Config                                                                      */
-/* ========================================================================== */
 
 const TEN_MIN_MS = 10 * 60 * 1000;
 
 const TEMP_MIN = -100;
-const TEMP_MAX = 150;
+const TEMP_MAX = 999;
 
 const RSSI_MIN = -200;
 const RSSI_MAX = 0;
@@ -34,25 +16,31 @@ const TRIGGER_EXTERNAL_ON_INGEST =
     .toLowerCase()
     .trim() === "true";
 
-/* ========================================================================== */
-/* Public API                                                                  */
-/* ========================================================================== */
-
 exports.createReading = async ({ deviceId, temperature, rssi }) => {
-  const devId = requirePositiveIntString("deviceId", deviceId);
+  const devId = requirePositiveIntLike("deviceId", deviceId);
+  const temp = requireFloatLike("temperature", temperature);
+  const rssiInt = requireIntLike("rssi", rssi);
 
-  //MUST CHANGE FOR INGEST TO PROPERLY WORK WITH DEDUPE LOGIC
-  //const bucketAt = floorToTenMinutes(new Date());
+  if (temp <= TEMP_MIN || temp >= TEMP_MAX) {
+    throw badRequest(`temperature must be between ${TEMP_MIN} and ${TEMP_MAX}`);
+  }
+
+  if (rssiInt < RSSI_MIN || rssiInt > RSSI_MAX) {
+    throw badRequest(`rssi must be between ${RSSI_MIN} and ${RSSI_MAX}`);
+  }
+
+  // Use this for real 10-minute dedupe behavior.
+  //const bucketAt = floorToTenMinutes(new Date()).toISOString();
+
+  // Uncomment this during testing when you want every request to bypass bucket dedupe.
   const bucketAt = new Date().toISOString();
 
-  const { inserted, reading } = await readingIngestRepo.createReadingDeduped10m(
-    {
-      deviceId: devId,
-      bucketAt,
-      temperatureC: temp,
-      rssiDbm: rssiInt,
-    },
-  );
+  const { inserted, reading } = await ingestRepo.createReadingDeduped10m({
+    deviceId: devId,
+    bucketAt,
+    temperatureC: temp,
+    rssiDbm: rssiInt,
+  });
 
   if (inserted && TRIGGER_EXTERNAL_ON_INGEST) {
     try {
@@ -60,17 +48,13 @@ exports.createReading = async ({ deviceId, temperature, rssi }) => {
         deviceId: devId,
       });
     } catch (e) {
-      // Intentional swallow to avoid failing ingest when external fetch fails
+      // Do not fail ingest if external weather fetch fails.
       console.error("External condition ingest failed:", e?.message || e);
     }
   }
 
   return { inserted, reading };
 };
-
-/* ========================================================================== */
-/* Errors                                                                      */
-/* ========================================================================== */
 
 function httpError(status, code, message) {
   const err = new Error(message);
@@ -83,29 +67,21 @@ function badRequest(message) {
   return httpError(400, "VALIDATION_ERROR", message);
 }
 
-/* ========================================================================== */
-/* Validation                                                                  */
-/* ========================================================================== */
-
-function requirePositiveIntString(field, value) {
-  const n = requireIntString(field, value);
+function requirePositiveIntLike(field, value) {
+  const n = requireIntLike(field, value);
   if (n <= 0) {
-    throw badRequest(`${field} must be a positive integer string`);
+    throw badRequest(`${field} must be a positive integer`);
   }
   return n;
 }
 
-function requireIntString(field, value) {
-  if (typeof value !== "string") {
-    throw badRequest(`${field} must be a string`);
+function requireIntLike(field, value) {
+  const str = coerceInputString(field, value);
+  if (!/^-?\d+$/.test(str)) {
+    throw badRequest(`${field} must be an integer`);
   }
 
-  const trimmed = value.trim();
-  if (!/^-?\d+$/.test(trimmed)) {
-    throw badRequest(`${field} must be an integer string`);
-  }
-
-  const n = Number.parseInt(trimmed, 10);
+  const n = Number.parseInt(str, 10);
   if (!Number.isSafeInteger(n)) {
     throw badRequest(`${field} is out of range`);
   }
@@ -113,17 +89,13 @@ function requireIntString(field, value) {
   return n;
 }
 
-function requireFloatString(field, value) {
-  if (typeof value !== "string") {
-    throw badRequest(`${field} must be a string`);
+function requireFloatLike(field, value) {
+  const str = coerceInputString(field, value);
+  if (!/^-?(?:\d+\.?\d*|\.\d+)$/.test(str)) {
+    throw badRequest(`${field} must be numeric`);
   }
 
-  const trimmed = value.trim();
-  if (!/^-?(?:\d+|\d*\.\d+)$/.test(trimmed)) {
-    throw badRequest(`${field} must be a numeric string`);
-  }
-
-  const n = Number(trimmed);
+  const n = Number(str);
   if (!Number.isFinite(n)) {
     throw badRequest(`${field} is out of range`);
   }
@@ -131,9 +103,18 @@ function requireFloatString(field, value) {
   return n;
 }
 
-/* ========================================================================== */
-/* Time                                                                        */
-/* ========================================================================== */
+function coerceInputString(field, value) {
+  if (value === null || value === undefined) {
+    throw badRequest(`${field} is required`);
+  }
+
+  const str = String(value).trim();
+  if (!str) {
+    throw badRequest(`${field} is required`);
+  }
+
+  return str;
+}
 
 function floorToTenMinutes(date) {
   const ms = date.getTime();

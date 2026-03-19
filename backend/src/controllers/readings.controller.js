@@ -40,8 +40,8 @@ exports.latest = async (req, res, next) => {
       hiveId: requireQueryParam(q, "hiveId"),
     });
 
-    if (!reading) {
-      return res.status(404).json({ error: "No readings found for hive" });
+    if (!reading || reading.hive_id === null) {
+      return res.status(404).json({ error: "Hive not found" });
     }
 
     return res.status(200).json({ reading });

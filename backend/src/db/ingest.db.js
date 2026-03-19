@@ -23,7 +23,7 @@ exports.createReadingDeduped10m = async ({
     const rows = await query(
       `
       WITH ins AS (
-        INSERT INTO reading (device_id, bucket_at, temperature_c, rssi_dbm)
+        INSERT INTO reading (device_id, bucket_at, temperature, rssi)
         VALUES ($1, $2::timestamptz, $3, $4)
         ON CONFLICT (device_id, bucket_at) DO NOTHING
         RETURNING
@@ -31,8 +31,8 @@ exports.createReadingDeduped10m = async ({
           device_id,
           bucket_at,
           received_at,
-          temperature_c,
-          rssi_dbm,
+          temperature,
+          rssi,
           created_at
       )
       SELECT
@@ -41,8 +41,8 @@ exports.createReadingDeduped10m = async ({
         device_id,
         bucket_at,
         received_at,
-        temperature_c,
-        rssi_dbm,
+        temperature,
+        rssi,
         created_at
       FROM ins
 
@@ -54,8 +54,8 @@ exports.createReadingDeduped10m = async ({
         r.device_id,
         r.bucket_at,
         r.received_at,
-        r.temperature_c,
-        r.rssi_dbm,
+        r.temperature,
+        r.rssi,
         r.created_at
       FROM reading r
       WHERE r.device_id = $1

@@ -79,8 +79,8 @@ CREATE TABLE reading (
   device_id BIGINT NOT NULL,
   bucket_at TIMESTAMPTZ NOT NULL,
   received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  temperature_c DOUBLE PRECISION NOT NULL,
-  rssi_dbm SMALLINT,
+  temperature DOUBLE PRECISION NOT NULL,
+  rssi SMALLINT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT fk_reading_device
     FOREIGN KEY (device_id)
@@ -88,9 +88,9 @@ CREATE TABLE reading (
     ON DELETE CASCADE,
   CONSTRAINT uq_reading_device_bucket_at UNIQUE (device_id, bucket_at),
   CONSTRAINT chk_reading_temperature_c
-    CHECK (temperature_c > -100 AND temperature_c < 150),
+    CHECK (temperature > -100 AND temperature < 999),
   CONSTRAINT chk_reading_rssi_dbm
-    CHECK (rssi_dbm IS NULL OR (rssi_dbm >= -200 AND rssi_dbm <= 0))
+    CHECK (rssi IS NULL OR (rssi >= -200 AND rssi <= 0))
 );
 
 CREATE INDEX idx_reading_device_bucket_at_desc
