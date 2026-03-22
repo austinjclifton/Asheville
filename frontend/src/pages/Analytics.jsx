@@ -52,7 +52,6 @@ function buildChartDataFromAPI(readings, externalConditions) {
     const extMin = extTemps.length ? Math.min(...extTemps) : null;
     const extMax = extTemps.length ? Math.max(...extTemps) : null;
     const diffVal = extAvgVal !== null ? intAvgVal - extAvgVal : null;
-    // Healthy hive internal should be ~33–37°C; difference from ambient typically 10–20°C
     const isNormal = diffVal !== null ? (diffVal >= 5 && diffVal <= 25) : true;
     return {
       date,
@@ -226,23 +225,7 @@ function AnalyticsChart({ data, view }) {
   return <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />;
 }
 
-function StatCard({ label, value, sub }) {
-  // value is null when no data exists — an em-dash at 26px bold looks like a line
-  const hasValue = value !== null && value !== undefined && value !== '—';
-  return (
-    <div style={{ background: 'white', borderRadius: '12px', padding: '18px 20px', boxShadow: 'var(--shadow-sm)' }}>
-      <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>{label}</div>
-      {hasValue ? (
-        <div style={{ fontSize: '26px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.02em' }}>{value}</div>
-      ) : (
-        <div style={{ fontSize: '13px', fontWeight: 500, color: '#cbd5e1', paddingTop: '2px', paddingBottom: '2px' }}>No data</div>
-      )}
-      {sub && <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>{sub}</div>}
-    </div>
-  );
-}
-
-const RANGE_DAYS = { '7D': 7, '30D': 30, '90D': 90 };
+const RANGE_DAYS = { '24H': 1, '7D': 7, '30D': 30 };
 const FILTER_OPTIONS = ['All', 'Normal', 'Warning'];
 
 function exportToCSV(summaries, range) {
@@ -261,7 +244,7 @@ function exportToCSV(summaries, range) {
 
 export default function Analytics() {
   const { ready: authReady, error: authError } = useAuth();
-  const [range, setRange] = useState('7D');
+  const [range, setRange] = useState('24H');
   const [view, setView] = useState('comparison');
   const [chartData, setChartData] = useState(null);
   const [allSummaries, setAllSummaries] = useState([]);
@@ -272,7 +255,6 @@ export default function Analytics() {
 
   const hiveIdRef = useRef(null);
 
-  // Only fetch hive data once the auth/session is confirmed ready
   useEffect(() => {
     if (!authReady || authError) return;
     apiFetch('/api/hives')
@@ -280,7 +262,7 @@ export default function Analytics() {
         const hives = res?.hives ?? [];
         if (hives.length > 0) {
           hiveIdRef.current = hives[0].id;
-          loadData('7D', hives[0].id);
+          loadData('24H', hives[0].id);
         }
       })
       .catch(() => {});
@@ -351,13 +333,6 @@ export default function Analytics() {
   const visibleSummaries = filteredSummaries.slice(0, visibleCount);
   const hasMore = visibleCount < filteredSummaries.length;
 
-  const intVals = chartData?.internalAvg ?? [];
-  const extVals = (chartData?.externalAvg ?? []).filter(v => v !== null);
-  const intAvg  = intVals.length ? (intVals.reduce((a, b) => a + b, 0) / intVals.length).toFixed(1) : null;
-  const intMin  = intVals.length ? Math.min(...intVals).toFixed(1) : null;
-  const intMax  = intVals.length ? Math.max(...intVals).toFixed(1) : null;
-  const extAvg  = extVals.length ? (extVals.reduce((a, b) => a + b, 0) / extVals.length).toFixed(1) : null;
-
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
       <Navigation />
@@ -386,7 +361,7 @@ export default function Analytics() {
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <div style={{ display: 'flex', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-              {['7D', '30D', '90D'].map(r => (
+              {['24H', '7D', '30D'].map(r => (
                 <button key={r} onClick={() => setRange(r)} style={{
                   padding: '7px 16px', border: 'none',
                   background: range === r ? '#1e2d4a' : 'white',
@@ -419,17 +394,6 @@ export default function Analytics() {
         </div>
 
         <div style={{ padding: '0 28px 28px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px' }}>
-            <StatCard
-              label="Internal Avg Temp"
-              value={intAvg !== null ? `${intAvg}°C` : null}
-              sub={intAvg !== null ? `±${(parseFloat(intMax) - parseFloat(intMin)).toFixed(1)}°C variance` : 'No data for range'}
-            />
-            <StatCard label="Internal Min Temp" value={intMin !== null ? `${intMin}°C` : null} sub="Over selected range" />
-            <StatCard label="Internal Max Temp" value={intMax !== null ? `${intMax}°C` : null} sub="Over selected range" />
-            <StatCard label="External Avg Temp" value={extAvg !== null ? `${extAvg}°C` : null} sub="Ambient sensor" />
-          </div>
-
           <div style={{ background: 'white', borderRadius: '12px', padding: '22px', boxShadow: 'var(--shadow-sm)', marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
               <div>
