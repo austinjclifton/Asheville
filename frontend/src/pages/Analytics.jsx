@@ -1,10 +1,36 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Navigation from "../components/Navigation";
-import { apiFetch, cToF } from '../api';
+import { apiFetch } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
-function buildChartDataFromAPI(readings, externalConditions) {
+function fmtDate(d) {
+  return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function fmtTime(d) {
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
   if (!readings || readings.length === 0) return null;
+
+  // For 7D/30D: aggregate readings into daily averages
+  let processedReadings = readings;
+  if (range === '7D' || range === '30D') {
+    const dayBuckets = {};
+    readings.forEach(r => {
+      const d = new Date(r.bucket_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      if (!dayBuckets[key]) dayBuckets[key] = { temps: [], rssis: [], bucket_at: r.bucket_at };
+      dayBuckets[key].temps.push(parseFloat(r.temperature));
+      if (r.rssi != null) dayBuckets[key].rssis.push(r.rssi);
+    });
+    processedReadings = Object.entries(dayBuckets).map(([, data]) => ({
+      bucket_at: data.bucket_at,
+      temperature: data.temps.reduce((a, b) => a + b, 0) / data.temps.length,
+      rssi: data.rssis.length ? data.rssis.reduce((a, b) => a + b, 0) / data.rssis.length : null,
+    }));
+  }
 
   const extByTs = {};
   if (externalConditions && externalConditions.length > 0) {
@@ -14,16 +40,14 @@ function buildChartDataFromAPI(readings, externalConditions) {
     });
   }
 
-  const labels = readings.map(r => {
+  const labels = processedReadings.map(r => {
     const d = new Date(r.bucket_at);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return range === '24H' ? fmtTime(d) : fmtDate(d);
   });
 
-  // Convert Celsius sensor readings to Fahrenheit
-  const internalAvg = readings.map(r => parseFloat(cToF(parseFloat(r.temperature)).toFixed(1)));
+  const internalAvg = processedReadings.map(r => parseFloat(parseFloat(r.temperature).toFixed(1)));
 
-  // External conditions are already in Fahrenheit (OpenWeather imperial units)
-  const externalAvg = readings.map(r => {
+  const externalAvg = processedReadings.map(r => {
     const ts = Math.floor(new Date(r.bucket_at).getTime() / (10 * 60 * 1000));
     for (const offset of [0, 1, -1]) {
       const val = extByTs[ts + offset];
@@ -37,17 +61,19 @@ function buildChartDataFromAPI(readings, externalConditions) {
     return extT !== null ? parseFloat((intT - extT).toFixed(1)) : null;
   });
 
+  // Summaries always grouped by calendar date (MM/DD/YYYY)
   const dayMap = {};
-  readings.forEach((r, i) => {
-    const day = new Date(r.bucket_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    if (!dayMap[day]) dayMap[day] = { temps: [], extTemps: [] };
-    // Push Fahrenheit values
-    dayMap[day].temps.push(cToF(parseFloat(r.temperature)));
+  processedReadings.forEach((r, i) => {
+    const d = new Date(r.bucket_at);
+    const day = fmtDate(d);
+    if (!dayMap[day]) dayMap[day] = { temps: [], extTemps: [], rssis: [] };
+    dayMap[day].temps.push(parseFloat(r.temperature));
+    if (r.rssi != null) dayMap[day].rssis.push(r.rssi);
     const extT = externalAvg[i];
     if (extT !== null) dayMap[day].extTemps.push(extT);
   });
 
-  const summaries = Object.entries(dayMap).map(([date, { temps, extTemps }]) => {
+  const summaries = Object.entries(dayMap).map(([date, { temps, extTemps, rssis }]) => {
     const intAvgVal = temps.reduce((a, b) => a + b, 0) / temps.length;
     const intMin = Math.min(...temps);
     const intMax = Math.max(...temps);
@@ -55,8 +81,9 @@ function buildChartDataFromAPI(readings, externalConditions) {
     const extMin = extTemps.length ? Math.min(...extTemps) : null;
     const extMax = extTemps.length ? Math.max(...extTemps) : null;
     const diffVal = extAvgVal !== null ? intAvgVal - extAvgVal : null;
-    // Normal range in Fahrenheit: 9–45°F above ambient (equivalent to 5–25°C)
+    // Normal range in Fahrenheit: 9–45°F above ambient
     const isNormal = diffVal !== null ? (diffVal >= 9 && diffVal <= 45) : true;
+    const avgRssi = rssis.length ? Math.round(rssis.reduce((a, b) => a + b, 0) / rssis.length) : null;
     return {
       date,
       intAvg: `${intAvgVal.toFixed(1)}°F`,
@@ -65,6 +92,7 @@ function buildChartDataFromAPI(readings, externalConditions) {
       extRange: extMin !== null ? `${extMin.toFixed(1)}–${extMax.toFixed(1)}°F` : 'N/A',
       diff: diffVal !== null ? `${diffVal.toFixed(1)}°F` : 'N/A',
       status: isNormal ? 'Normal' : 'Warning',
+      avgRssi: avgRssi !== null ? `${avgRssi} dBm` : 'N/A',
     };
   });
 
@@ -91,7 +119,7 @@ function AnalyticsChart({ data, view }) {
               data: data.tempDiff,
               backgroundColor: 'rgba(34,197,94,0.75)',
               borderWidth: 0,
-              borderRadius: 1,
+              borderRadius: 0,
               barPercentage: 0.85,
               categoryPercentage: 0.9,
               order: 3,
@@ -179,7 +207,7 @@ function AnalyticsChart({ data, view }) {
               borderColor: '#e2e8f0',
               borderWidth: 1,
               padding: 10,
-              cornerRadius: 8,
+              cornerRadius: 0,
               callbacks: {
                 label: (c) => c.parsed.y != null ? `  ${c.dataset.label}: ${c.parsed.y.toFixed(1)}` : null,
               },
@@ -230,14 +258,13 @@ function AnalyticsChart({ data, view }) {
 }
 
 const RANGE_DAYS = { '24H': 1, '7D': 7, '30D': 30 };
-// Limits sized to cover the full time window at 10-min bucket resolution
 const RANGE_LIMITS = { '24H': 300, '7D': 1500, '30D': 5000 };
 const FILTER_OPTIONS = ['All', 'Normal', 'Warning'];
 
 function exportToCSV(summaries, range) {
-  const header = 'Date,Int. Avg,Int. Range,Ext. Avg,Ext. Range,Diff,Status\n';
+  const header = 'Date,Int. Avg,Int. Range,Ext. Avg,Ext. Range,Diff,Status,Avg RSSI\n';
   const rows = summaries.map(r =>
-    `${r.date},${r.intAvg},${r.intRange},${r.extAvg},${r.extRange},${r.diff},${r.status}`
+    `${r.date},${r.intAvg},${r.intRange},${r.extAvg},${r.extRange},${r.diff},${r.status},${r.avgRssi}`
   ).join('\n');
   const blob = new Blob([header + rows], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -251,7 +278,8 @@ function exportToCSV(summaries, range) {
 export default function Analytics() {
   const { ready: authReady, error: authError } = useAuth();
   const [range, setRange] = useState('24H');
-  const [view, setView] = useState('comparison');
+  // 'ranges' is now the default (first) view
+  const [view, setView] = useState('ranges');
   const [chartData, setChartData] = useState(null);
   const [allSummaries, setAllSummaries] = useState([]);
   const [filterIdx, setFilterIdx] = useState(0);
@@ -279,7 +307,6 @@ export default function Analytics() {
     if (!id) return;
 
     const days = RANGE_DAYS[selectedRange];
-    // Use range-appropriate limits to ensure the full dataset is fetched
     const limit = RANGE_LIMITS[selectedRange] ?? 500;
     setDataLoading(true);
     try {
@@ -297,7 +324,7 @@ export default function Analytics() {
         ? (extRes.value?.externalConditions ?? [])
         : [];
 
-      const realData = buildChartDataFromAPI(readings, externalConditions);
+      const realData = buildChartDataFromAPI(readings, externalConditions, selectedRange);
       setChartData(realData ?? null);
       setAllSummaries(realData?.summaries ?? []);
     } catch {
@@ -350,7 +377,7 @@ export default function Analytics() {
           <div style={{
             position: 'fixed', top: '20px', right: '20px', zIndex: 1000,
             background: toast.ok ? '#1e2d4a' : '#ef4444',
-            color: 'white', padding: '10px 18px', borderRadius: '10px',
+            color: 'white', padding: '10px 18px',
             fontSize: '13px', fontWeight: 600,
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             animation: 'fadeIn 0.2s ease',
@@ -363,12 +390,12 @@ export default function Analytics() {
           <div>
             <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Analytics</h1>
             <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-              Data aggregation: 10 mins &nbsp;·&nbsp; Range: {range}
+              Data aggregation: {range === '24H' ? '10 mins' : 'daily avg'} &nbsp;·&nbsp; Range: {range}
               {dataLoading && ' · Loading…'}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <div style={{ display: 'flex', background: 'white', borderRadius: '8px', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ display: 'flex', background: 'white', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
               {['24H', '7D', '30D'].map(r => (
                 <button key={r} onClick={() => setRange(r)} style={{
                   padding: '7px 16px', border: 'none',
@@ -383,7 +410,7 @@ export default function Analytics() {
               onClick={handleExport}
               disabled={allSummaries.length === 0}
               style={{
-                padding: '7px 14px', borderRadius: '8px', border: '1.5px solid #e2e8f0',
+                padding: '7px 14px', border: '1.5px solid #e2e8f0',
                 background: 'white', color: '#1e2d4a', fontSize: '12px', fontWeight: 700,
                 cursor: allSummaries.length === 0 ? 'not-allowed' : 'pointer',
                 opacity: allSummaries.length === 0 ? 0.5 : 1,
@@ -402,23 +429,26 @@ export default function Analytics() {
         </div>
 
         <div style={{ padding: '0 28px 28px' }}>
-          <div style={{ background: 'white', borderRadius: '12px', padding: '22px', boxShadow: 'var(--shadow-sm)', marginBottom: '20px' }}>
+          <div style={{ background: 'white', padding: '22px', boxShadow: 'var(--shadow-sm)', marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Beehive Temperature Analytics</div>
-                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>Comparing internal retention vs external ambient (°F)</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
+                  {range === '24H' ? 'Hourly readings (°F)' : 'Daily averages (°F)'}
+                </div>
               </div>
+              {/* Ranges first, then comparison */}
               <div style={{ display: 'flex', gap: '4px' }}>
-                {['comparison', 'ranges'].map(v => (
+                {/* {['ranges', 'comparison'].map(v => (
                   <button key={v} onClick={() => setView(v)} style={{
-                    padding: '6px 14px', borderRadius: '6px', border: 'none',
+                    padding: '6px 14px', border: 'none',
                     background: view === v ? '#f1f5f9' : 'transparent',
                     color: view === v ? '#1e2d4a' : '#94a3b8',
                     fontSize: '11px', fontWeight: 700, cursor: 'pointer',
                     textTransform: 'uppercase', letterSpacing: '0.05em',
                     transition: 'all 0.15s',
                   }}>{v}</button>
-                ))}
+                ))} */}
               </div>
             </div>
             <div style={{ height: '340px' }}>
@@ -435,7 +465,7 @@ export default function Analytics() {
             </div>
           </div>
 
-          <div style={{ background: 'white', borderRadius: '12px', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+          <div style={{ background: 'white', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
             <div style={{ padding: '16px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Daily Summaries
@@ -447,7 +477,7 @@ export default function Analytics() {
                 onClick={handleFilterCycle}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '6px 12px', borderRadius: '8px',
+                  padding: '6px 12px',
                   border: '1.5px solid #e2e8f0', background: currentFilter !== 'All' ? '#1e2d4a' : 'white',
                   fontSize: '11px', fontWeight: 700,
                   color: currentFilter !== 'All' ? 'white' : '#64748b',
@@ -473,6 +503,7 @@ export default function Analytics() {
                       { label: 'EXT. RANGE', color: '#94a3b8' },
                       { label: 'DIFF',       color: '#22c55e' },
                       { label: 'STATUS',     color: '#94a3b8' },
+                      { label: 'AVG RSSI',   color: '#94a3b8' },
                     ].map(h => (
                       <th key={h.label} style={{
                         padding: '10px 20px', textAlign: 'left',
@@ -486,7 +517,7 @@ export default function Analytics() {
                 <tbody>
                   {visibleSummaries.length === 0 ? (
                     <tr>
-                      <td colSpan="7" style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                      <td colSpan="8" style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
                         {dataLoading ? 'Loading summaries…' : 'No records found. Send readings from your sensor to see data here.'}
                       </td>
                     </tr>
@@ -504,11 +535,12 @@ export default function Analytics() {
                         <td style={{ padding: '12px 20px', fontSize: '13px', color: '#22c55e', fontWeight: 700 }}>{row.diff}</td>
                         <td style={{ padding: '12px 20px' }}>
                           <span style={{
-                            padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700,
+                            padding: '3px 10px', fontSize: '11px', fontWeight: 700,
                             background: row.status === 'Normal' ? '#dcfce7' : '#fef3c7',
                             color: row.status === 'Normal' ? '#16a34a' : '#d97706',
                           }}>{row.status}</span>
                         </td>
+                        <td style={{ padding: '12px 20px', fontSize: '13px', color: '#64748b' }}>{row.avgRssi}</td>
                       </tr>
                     ))
                   )}
@@ -520,7 +552,7 @@ export default function Analytics() {
                 <button
                   onClick={() => setVisibleCount(c => c + 5)}
                   style={{
-                    padding: '8px 28px', border: '1.5px solid #e2e8f0', borderRadius: '8px',
+                    padding: '8px 28px', border: '1.5px solid #e2e8f0',
                     background: 'white', fontSize: '12px', fontWeight: 700,
                     color: '#1e2d4a', cursor: 'pointer', textTransform: 'uppercase',
                     letterSpacing: '0.05em', transition: 'background 0.15s',

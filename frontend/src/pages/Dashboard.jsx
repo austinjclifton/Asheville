@@ -4,8 +4,8 @@ import Navigation from "../components/Navigation";
 import { apiFetch, cToF } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
-const RANGE_HOURS = { '24H': 24, '7D': 24 * 7, '30D': 24 * 30 };
-const RANGE_LIMITS = { '24H': 200, '7D': 2000, '30D': 5000 };
+const RANGE_HOURS = { '24H': 24 };
+const RANGE_LIMITS = { '24H': 200 };
 
 // ── Setup Wizard ──────────────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@ function CopyButton({ text, label }) {
       onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
       style={{
         flexShrink: 0, background: copied ? '#22c55e' : 'rgba(255,255,255,0.12)',
-        border: 'none', borderRadius: '6px', padding: '5px 10px',
+        border: 'none', padding: '5px 10px',
         color: 'white', fontSize: '11px', fontWeight: 700, cursor: 'pointer',
         transition: 'background 0.2s', whiteSpace: 'nowrap',
       }}
@@ -30,7 +30,7 @@ function CodeRow({ label, value }) {
   return (
     <div style={{ marginBottom: '10px' }}>
       <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0f172a', borderRadius: '8px', padding: '9px 12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0f172a', padding: '9px 12px' }}>
         <code style={{ flex: 1, color: '#f5a623', fontFamily: 'monospace', fontSize: '13px', wordBreak: 'break-all' }}>{value}</code>
         <CopyButton text={value} />
       </div>
@@ -81,13 +81,13 @@ function SetupWizard({ onComplete }) {
       justifyContent: 'center', zIndex: 200, padding: '24px', animation: 'fadeIn 0.2s ease',
     }}>
       <div style={{
-        background: 'white', borderRadius: '20px',
+        background: 'white',
         width: '100%', maxWidth: step === 2 ? '560px' : '440px',
         boxShadow: '0 24px 80px rgba(0,0,0,0.3)', overflow: 'hidden', animation: 'fadeIn 0.25s ease',
       }}>
         <div style={{ background: '#1e2d4a', padding: '22px 26px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-            <div style={{ width: '36px', height: '36px', background: '#f5a623', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ width: '36px', height: '36px', background: '#f5a623', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z" fill="white"/></svg>
             </div>
             <div>
@@ -95,8 +95,8 @@ function SetupWizard({ onComplete }) {
               <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', marginTop: '1px' }}>Step {step} of 2 — {step === 1 ? 'Create your hive' : 'Configure your device'}</div>
             </div>
           </div>
-          <div style={{ height: '4px', background: 'rgba(255,255,255,0.12)', borderRadius: '2px' }}>
-            <div style={{ height: '100%', background: '#f5a623', borderRadius: '2px', width: step === 1 ? '50%' : '100%', transition: 'width 0.4s ease' }} />
+          <div style={{ height: '4px', background: 'rgba(255,255,255,0.12)' }}>
+            <div style={{ height: '100%', background: '#f5a623', width: step === 1 ? '50%' : '100%', transition: 'width 0.4s ease' }} />
           </div>
         </div>
 
@@ -107,7 +107,7 @@ function SetupWizard({ onComplete }) {
                 No hive is registered yet. Give your hive a name and we'll create a device ID for your sensor automatically.
               </p>
               {error && (
-                <div style={{ marginBottom: '16px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#dc2626', fontSize: '13px', fontWeight: 500 }}>{error}</div>
+                <div style={{ marginBottom: '16px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: '13px', fontWeight: 500 }}>{error}</div>
               )}
               <form onSubmit={handleCreate}>
                 <div style={{ marginBottom: '14px' }}>
@@ -117,7 +117,7 @@ function SetupWizard({ onComplete }) {
                   <input
                     type="text" value={hiveName} onChange={e => setHiveName(e.target.value)}
                     placeholder="e.g. Backyard Hive #1" required autoFocus
-                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #e2e8f0', borderRadius: '10px', fontSize: '14px', color: '#1e2d4a', background: '#f8fafc', outline: 'none', fontFamily: 'inherit' }}
+                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #e2e8f0', fontSize: '14px', color: '#1e2d4a', background: '#f8fafc', outline: 'none', fontFamily: 'inherit' }}
                     onFocus={e => { e.target.style.borderColor = '#1e2d4a'; e.target.style.background = 'white'; }}
                     onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = '#f8fafc'; }}
                   />
@@ -129,12 +129,12 @@ function SetupWizard({ onComplete }) {
                   <textarea
                     value={hiveNotes} onChange={e => setHiveNotes(e.target.value)}
                     placeholder="Location, colony type, etc." rows={2}
-                    style={{ width: '100%', padding: '11px 14px', resize: 'vertical', border: '1.5px solid #e2e8f0', borderRadius: '10px', fontSize: '14px', color: '#1e2d4a', background: '#f8fafc', outline: 'none', fontFamily: 'inherit' }}
+                    style={{ width: '100%', padding: '11px 14px', resize: 'vertical', border: '1.5px solid #e2e8f0', fontSize: '14px', color: '#1e2d4a', background: '#f8fafc', outline: 'none', fontFamily: 'inherit' }}
                     onFocus={e => { e.target.style.borderColor = '#1e2d4a'; e.target.style.background = 'white'; }}
                     onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = '#f8fafc'; }}
                   />
                 </div>
-                <button type="submit" disabled={loading} style={{ width: '100%', padding: '13px', border: 'none', borderRadius: '10px', background: loading ? '#94a3b8' : '#1e2d4a', color: 'white', fontSize: '14px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <button type="submit" disabled={loading} style={{ width: '100%', padding: '13px', border: 'none', background: loading ? '#94a3b8' : '#1e2d4a', color: 'white', fontSize: '14px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                   {loading ? <><span style={{ animation: 'pulse 1s infinite' }}>●</span> Creating…</> : 'Create Hive & Register Device →'}
                 </button>
               </form>
@@ -143,7 +143,7 @@ function SetupWizard({ onComplete }) {
 
           {step === 2 && device && (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px', padding: '11px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px', padding: '11px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 <div style={{ fontSize: '13px', fontWeight: 600, color: '#15803d' }}>
                   Hive <strong>"{hive?.name}"</strong> created — Device ID <strong>{device.id}</strong> registered.
@@ -151,7 +151,7 @@ function SetupWizard({ onComplete }) {
               </div>
 
               <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px', lineHeight: 1.6 }}>
-                Point your sensor at the endpoint below. Include your <code style={{ background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px', fontSize: '12px' }}>INGEST_SECRET</code> in the header.
+                Point your sensor at the endpoint below. Include your <code style={{ background: '#f1f5f9', padding: '1px 5px', fontSize: '12px' }}>INGEST_SECRET</code> in the header.
               </p>
 
               <CodeRow label="POST Endpoint" value={ingestUrl} />
@@ -159,7 +159,7 @@ function SetupWizard({ onComplete }) {
 
               <div style={{ marginBottom: '10px' }}>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>Required Headers</div>
-                <div style={{ background: '#0f172a', borderRadius: '8px', padding: '10px 12px' }}>
+                <div style={{ background: '#0f172a', padding: '10px 12px' }}>
                   <code style={{ color: '#86efac', fontFamily: 'monospace', fontSize: '12px', display: 'block' }}>x-ingest-token: YOUR_INGEST_SECRET</code>
                   <code style={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: '12px', display: 'block', marginTop: '3px' }}>Content-Type: application/json</code>
                 </div>
@@ -167,16 +167,16 @@ function SetupWizard({ onComplete }) {
 
               <div style={{ marginBottom: '22px' }}>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>Example JSON Body</div>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', background: '#0f172a', borderRadius: '8px', padding: '10px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', background: '#0f172a', padding: '10px 12px' }}>
                   <pre style={{ flex: 1, color: '#f5a623', fontFamily: 'monospace', fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap' }}>{examplePayload}</pre>
                   <CopyButton text={examplePayload} label="Copy" />
                 </div>
                 <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px', lineHeight: 1.6 }}>
-                  <strong>temperature</strong> — Celsius string, e.g. "34.5" &nbsp;·&nbsp; <strong>rssi</strong> — dBm string from −200 to 0
+                  <strong>temperature</strong> — °F string, e.g. "95.2" &nbsp;·&nbsp; <strong>rssi</strong> — dBm string from −200 to 0
                 </div>
               </div>
 
-              <button onClick={() => onComplete(hive, device)} style={{ width: '100%', padding: '13px', border: 'none', borderRadius: '10px', background: '#1e2d4a', color: 'white', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+              <button onClick={() => onComplete(hive, device)} style={{ width: '100%', padding: '13px', border: 'none', background: '#1e2d4a', color: 'white', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
                 Go to Dashboard →
               </button>
             </>
@@ -194,10 +194,10 @@ function NoReadingsBanner({ deviceId }) {
   const curlCmd = `curl -X POST ${ingestUrl} \\
   -H "Content-Type: application/json" \\
   -H "x-ingest-token: <YOUR_INGEST_SECRET>" \\
-  -d '{"deviceId":"${deviceId}","temperature":"34.5","rssi":"-70"}'`;
+  -d '{"deviceId":"${deviceId}","temperature":"95.2","rssi":"-70"}'`;
 
   return (
-    <div style={{ margin: '0 28px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '16px 20px' }}>
+    <div style={{ margin: '0 28px 16px', background: '#fffbeb', border: '1px solid #fde68a', padding: '16px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
@@ -208,9 +208,9 @@ function NoReadingsBanner({ deviceId }) {
             Waiting for first sensor reading
           </div>
           <div style={{ fontSize: '12px', color: '#78350f', lineHeight: 1.6, marginBottom: '10px' }}>
-            Device ID <code style={{ background: '#fef3c7', padding: '1px 5px', borderRadius: '4px', fontFamily: 'monospace' }}>{deviceId}</code> is registered. Send a test POST:
+            Device ID <code style={{ background: '#fef3c7', padding: '1px 5px', fontFamily: 'monospace' }}>{deviceId}</code> is registered. Send a test POST:
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', background: '#0f172a', borderRadius: '8px', padding: '10px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', background: '#0f172a', padding: '10px 12px' }}>
             <pre style={{ flex: 1, color: '#f5a623', fontFamily: 'monospace', fontSize: '11px', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{curlCmd}</pre>
             <CopyButton text={curlCmd} label="Copy" />
           </div>
@@ -248,7 +248,7 @@ function DashboardChart({ data }) {
           animation: { duration: 400, easing: 'easeInOutQuart' },
           plugins: {
             legend: { display: true, position: 'bottom', labels: { color: '#64748b', font: { size: 11 }, boxWidth: 12, usePointStyle: true } },
-            tooltip: { backgroundColor: 'rgba(255,255,255,0.97)', titleColor: '#1e2d4a', bodyColor: '#64748b', borderColor: '#e2e8f0', borderWidth: 1, padding: 10, boxPadding: 5, cornerRadius: 8, callbacks: { label: c => c.parsed.y!=null ? `  ${c.dataset.label}: ${c.parsed.y.toFixed(1)}` : null } },
+            tooltip: { backgroundColor: 'rgba(255,255,255,0.97)', titleColor: '#1e2d4a', bodyColor: '#64748b', borderColor: '#e2e8f0', borderWidth: 1, padding: 10, boxPadding: 5, cornerRadius: 0, callbacks: { label: c => c.parsed.y!=null ? `  ${c.dataset.label}: ${c.parsed.y.toFixed(1)}` : null } },
           },
           scales: {
             x: { grid: { color: 'rgba(100,116,139,0.10)', lineWidth: 1, borderDash: [4,4] }, border: { display: false }, ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxTicksLimit: 9, maxRotation: 0 } },
@@ -276,7 +276,7 @@ function TempCard({ title, value, unit, delta, sensor, accentColor, Icon }) {
   const hasValue = value !== null && value !== undefined && value !== '…';
 
   return (
-    <div style={{ background: 'white', borderRadius: '12px', overflow: 'hidden', flex: 1, boxShadow: 'var(--shadow-sm)' }}>
+    <div style={{ background: 'white', overflow: 'hidden', flex: 1, boxShadow: 'var(--shadow-sm)' }}>
       <div style={{ height: '3px', background: accentColor }} />
       <div style={{ padding: '18px 22px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -285,7 +285,7 @@ function TempCard({ title, value, unit, delta, sensor, accentColor, Icon }) {
             <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.07em', textTransform: 'uppercase' }}>{title}</span>
           </div>
           {hasValue && !isZero && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: isNeg ? '#ef4444' : '#22c55e', background: isNeg ? '#fef2f2' : '#f0fdf4', padding: '3px 9px', borderRadius: '6px', lineHeight: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: isNeg ? '#ef4444' : '#22c55e', background: isNeg ? '#fef2f2' : '#f0fdf4', padding: '3px 9px', lineHeight: 1 }}>
               {isNeg ? '▼' : '▲'} {Math.abs(delta).toFixed(1)}°F
             </div>
           )}
@@ -325,7 +325,6 @@ function SystemEventList({ hiveId }) {
       .then(res => {
         const readings = res?.readings ?? [];
         const mapped = readings.map(r => {
-          // Convert Celsius from sensor to Fahrenheit for display
           const tf = cToF(parseFloat(r.temperature));
           let type = 'info';
           let msg = `Temperature reading: ${tf.toFixed(1)}°F`;
@@ -334,7 +333,7 @@ function SystemEventList({ hiveId }) {
           const d = new Date(r.bucket_at);
           return {
             type,
-            time: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            time: `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
             message: msg,
           };
         });
@@ -367,9 +366,9 @@ function SystemEventList({ hiveId }) {
       {events.map((evt, i) => {
         const s = EVENT_STYLES[evt.type] || EVENT_STYLES.info;
         return (
-          <div key={i} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: '10px', padding: '11px 13px' }}>
+          <div key={i} style={{ background: s.bg, border: `1px solid ${s.border}`, padding: '11px 13px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '10px', fontWeight: 800, background: s.labelBg, color: s.labelColor, padding: '2px 8px', borderRadius: '4px', letterSpacing: '0.05em' }}>{s.text}</span>
+              <span style={{ fontSize: '10px', fontWeight: 800, background: s.labelBg, color: s.labelColor, padding: '2px 8px', letterSpacing: '0.05em' }}>{s.text}</span>
               <span style={{ fontSize: '10px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '3px' }}>
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 {evt.time}
@@ -393,7 +392,6 @@ export default function Dashboard() {
   const [externalCondition, setExternalCondition] = useState(null);
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(false);
-  const [timeRange, setTimeRange] = useState('24H');
   const [hive, setHive] = useState(null);
   const [device, setDevice] = useState(null);
   const [chartData, setChartData] = useState(null);
@@ -463,17 +461,16 @@ export default function Dashboard() {
           extByTs[ts] = ec.temperature;
         });
 
+        // Always 24H: use HH:mm labels
         const labels = readings.map(r => {
           const d = new Date(r.bucket_at);
-          return range === '24H'
-            ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+          const hh = String(d.getHours()).padStart(2, '0');
+          const mm = String(d.getMinutes()).padStart(2, '0');
+          return `${hh}:${mm}`;
         });
 
-        // Convert Celsius sensor readings to Fahrenheit for display
         const internal = readings.map(r => cToF(parseFloat(r.temperature ?? 0)));
 
-        // External conditions are already in Fahrenheit (OpenWeather imperial units)
         const external = readings.map(r => {
           const ts = Math.floor(new Date(r.bucket_at).getTime() / (10 * 60 * 1000));
           for (const offset of [0, 1, -1]) {
@@ -494,8 +491,6 @@ export default function Dashboard() {
     }
   }, []);
 
-  const handleRangeChange = r => { setTimeRange(r); fetchChartData(hiveIdRef.current, r); };
-
   const handleSetupComplete = (newHive, newDevice) => {
     setHive(newHive); setDevice(newDevice);
     hiveIdRef.current = newHive.id;
@@ -503,12 +498,8 @@ export default function Dashboard() {
     fetchChartData(newHive.id, '24H');
   };
 
-  // Convert Celsius sensor reading to Fahrenheit for display
-  const latestF = latest?.temperature != null
-    ? cToF(latest.temperature)
-    : null;
+  const latestF = latest?.temperature != null ? cToF(latest.temperature) : null;
 
-  // External condition temperature is already in Fahrenheit (OpenWeather imperial)
   const externalF = externalCondition?.temperature != null
     ? parseFloat(parseFloat(externalCondition.temperature).toFixed(1))
     : null;
@@ -543,7 +534,7 @@ export default function Dashboard() {
             </span>
             {!loading && (
               <span style={{
-                width: '8px', height: '8px', borderRadius: '50%',
+                width: '8px', height: '8px',
                 background: hasRealReadings ? '#22c55e' : '#f59e0b',
                 display: 'inline-block',
                 boxShadow: `0 0 0 3px ${hasRealReadings ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)'}`,
@@ -556,7 +547,7 @@ export default function Dashboard() {
           device
             ? <NoReadingsBanner deviceId={device.id} />
             : (
-              <div style={{ margin: '0 28px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '14px 20px', fontSize: '13px', color: '#1d4ed8', fontWeight: 500 }}>
+              <div style={{ margin: '0 28px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px 20px', fontSize: '13px', color: '#1d4ed8', fontWeight: 500 }}>
                 No device is registered to this hive yet. Use the setup flow to register a sensor, then send readings to see data here.
               </div>
             )
@@ -585,19 +576,14 @@ export default function Dashboard() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '16px', alignItems: 'start' }}>
-            <div style={{ background: 'white', borderRadius: '12px', padding: '22px 22px 14px', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ background: 'white', padding: '22px 22px 14px', boxShadow: 'var(--shadow-sm)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                 <div>
                   <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Temperature Analysis
                     {chartLoading && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#94a3b8', fontWeight: 500, textTransform: 'none' }}>Loading…</span>}
                   </div>
-                  <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '3px' }}>Internal vs External Correlation (°F)</div>
-                </div>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {['24H', '7D', '30D'].map(r => (
-                    <button key={r} onClick={() => handleRangeChange(r)} style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', background: timeRange === r ? '#1e2d4a' : '#f1f5f9', color: timeRange === r ? 'white' : '#64748b', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s', opacity: chartLoading ? 0.6 : 1 }}>{r}</button>
-                  ))}
+                  <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '3px' }}>Internal vs External Correlation (°F): Last 24 Hours</div>
                 </div>
               </div>
               <div style={{ height: '290px' }}>
@@ -614,7 +600,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div style={{ background: 'white', borderRadius: '12px', padding: '22px', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ background: 'white', padding: '22px', boxShadow: 'var(--shadow-sm)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>System Events</div>
                 <button onClick={() => navigate('/alerts')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 800, color: '#f5a623', letterSpacing: '0.05em', textTransform: 'uppercase' }}>View All</button>
