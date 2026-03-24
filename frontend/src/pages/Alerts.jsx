@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Navigation from "../components/Navigation";
-import { apiFetch } from '../api';
+import { apiFetch, cToF } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
 // Severity config for rendering
@@ -18,67 +18,69 @@ const STATUS_CONFIG = {
 
 /**
  * Derive alert events from real sensor readings.
- * The backend has no /api/alerts endpoint, so we synthesize alerts
- * from recent readings using the same threshold logic as Settings.
+ * Temperatures from the sensor are in Celsius; convert to Fahrenheit before
+ * comparing against thresholds (which are stored in Fahrenheit).
  */
 function deriveAlertsFromReadings(readings, prefs) {
   if (!readings || readings.length === 0) return [];
 
-  const critLow  = parseFloat(prefs?.criticalLow  ?? '33');
-  const critHigh = parseFloat(prefs?.criticalHigh ?? '40');
-  const optLow   = parseFloat(prefs?.optimalLow   ?? '34');
-  const optHigh  = parseFloat(prefs?.optimalHigh  ?? '37');
+  // Thresholds are in Fahrenheit
+  const critLow  = parseFloat(prefs?.criticalLow  ?? '91');
+  const critHigh = parseFloat(prefs?.criticalHigh ?? '104');
+  const optLow   = parseFloat(prefs?.optimalLow   ?? '93');
+  const optHigh  = parseFloat(prefs?.optimalHigh  ?? '99');
 
   const alerts = [];
   let id = 1;
 
   readings.forEach(r => {
-    const tc = parseFloat(r.temperature);
+    // Convert Celsius sensor reading to Fahrenheit
+    const tf = cToF(parseFloat(r.temperature));
     const d = new Date(r.bucket_at);
     const timeStr = d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-    if (tc < critLow) {
+    if (tf < critLow) {
       alerts.push({
         id: id++,
         severity: 'critical',
         status: 'active',
         title: 'Temperature Below Critical Threshold',
-        description: `Hive temperature dropped to ${tc.toFixed(1)}°C, below the critical low of ${critLow}°C. Immediate attention required.`,
+        description: `Hive temperature dropped to ${tf.toFixed(1)}°F, below the critical low of ${critLow}°F. Immediate attention required.`,
         time: timeStr,
-        temperature: `${tc.toFixed(1)}°C`,
+        temperature: `${tf.toFixed(1)}°F`,
         type: 'Below Range',
       });
-    } else if (tc > critHigh) {
+    } else if (tf > critHigh) {
       alerts.push({
         id: id++,
         severity: 'critical',
         status: 'active',
         title: 'Temperature Above Critical Threshold',
-        description: `Hive temperature rose to ${tc.toFixed(1)}°C, above the critical high of ${critHigh}°C. Immediate attention required.`,
+        description: `Hive temperature rose to ${tf.toFixed(1)}°F, above the critical high of ${critHigh}°F. Immediate attention required.`,
         time: timeStr,
-        temperature: `${tc.toFixed(1)}°C`,
+        temperature: `${tf.toFixed(1)}°F`,
         type: 'Above Range',
       });
-    } else if (tc < optLow) {
+    } else if (tf < optLow) {
       alerts.push({
         id: id++,
         severity: 'warning',
         status: 'active',
         title: 'Temperature Below Optimal Range',
-        description: `Temperature at ${tc.toFixed(1)}°C is below the optimal low of ${optLow}°C. Monitor closely.`,
+        description: `Temperature at ${tf.toFixed(1)}°F is below the optimal low of ${optLow}°F. Monitor closely.`,
         time: timeStr,
-        temperature: `${tc.toFixed(1)}°C`,
+        temperature: `${tf.toFixed(1)}°F`,
         type: 'Below Range',
       });
-    } else if (tc > optHigh) {
+    } else if (tf > optHigh) {
       alerts.push({
         id: id++,
         severity: 'warning',
         status: 'active',
         title: 'Temperature Above Optimal Range',
-        description: `Temperature at ${tc.toFixed(1)}°C is above the optimal high of ${optHigh}°C. Monitor closely.`,
+        description: `Temperature at ${tf.toFixed(1)}°F is above the optimal high of ${optHigh}°F. Monitor closely.`,
         time: timeStr,
-        temperature: `${tc.toFixed(1)}°C`,
+        temperature: `${tf.toFixed(1)}°F`,
         type: 'Above Range',
       });
     } else {
@@ -87,9 +89,9 @@ function deriveAlertsFromReadings(readings, prefs) {
         severity: 'info',
         status: 'resolved',
         title: 'Temperature Within Normal Range',
-        description: `Temperature stable at ${tc.toFixed(1)}°C within optimal range (${optLow}–${optHigh}°C).`,
+        description: `Temperature stable at ${tf.toFixed(1)}°F within optimal range (${optLow}–${optHigh}°F).`,
         time: timeStr,
-        temperature: `${tc.toFixed(1)}°C`,
+        temperature: `${tf.toFixed(1)}°F`,
         type: 'Normal',
       });
     }
@@ -121,9 +123,13 @@ function StatCard({ value, label, color }) {
 function loadPrefs() {
   try {
     const raw = localStorage.getItem('asheville_settings_v1');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return parsed;
+    }
   } catch {}
-  return { criticalLow: '33', criticalHigh: '40', optimalLow: '34', optimalHigh: '37' };
+  // Defaults in Fahrenheit
+  return { criticalLow: '91', criticalHigh: '104', optimalLow: '93', optimalHigh: '99' };
 }
 
 export default function Alerts() {
@@ -135,7 +141,6 @@ export default function Alerts() {
   const [statusFilter, setStatusFilter] = useState('active');
 
   useEffect(() => {
-    // Don't fetch until the session cookie and CSRF token are confirmed present
     if (!authReady) return;
     if (authError) {
       setError('Authentication required. Please log in again.');

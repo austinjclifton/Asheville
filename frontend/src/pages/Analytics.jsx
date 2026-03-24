@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Navigation from "../components/Navigation";
-import { apiFetch } from '../api';
+import { apiFetch, cToF } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
 function buildChartDataFromAPI(readings, externalConditions) {
@@ -19,8 +19,10 @@ function buildChartDataFromAPI(readings, externalConditions) {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   });
 
-  const internalAvg = readings.map(r => parseFloat(parseFloat(r.temperature).toFixed(1)));
+  // Convert Celsius sensor readings to Fahrenheit
+  const internalAvg = readings.map(r => parseFloat(cToF(parseFloat(r.temperature)).toFixed(1)));
 
+  // External conditions are already in Fahrenheit (OpenWeather imperial units)
   const externalAvg = readings.map(r => {
     const ts = Math.floor(new Date(r.bucket_at).getTime() / (10 * 60 * 1000));
     for (const offset of [0, 1, -1]) {
@@ -39,7 +41,8 @@ function buildChartDataFromAPI(readings, externalConditions) {
   readings.forEach((r, i) => {
     const day = new Date(r.bucket_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     if (!dayMap[day]) dayMap[day] = { temps: [], extTemps: [] };
-    dayMap[day].temps.push(parseFloat(r.temperature));
+    // Push Fahrenheit values
+    dayMap[day].temps.push(cToF(parseFloat(r.temperature)));
     const extT = externalAvg[i];
     if (extT !== null) dayMap[day].extTemps.push(extT);
   });
@@ -52,14 +55,15 @@ function buildChartDataFromAPI(readings, externalConditions) {
     const extMin = extTemps.length ? Math.min(...extTemps) : null;
     const extMax = extTemps.length ? Math.max(...extTemps) : null;
     const diffVal = extAvgVal !== null ? intAvgVal - extAvgVal : null;
-    const isNormal = diffVal !== null ? (diffVal >= 5 && diffVal <= 25) : true;
+    // Normal range in Fahrenheit: 9–45°F above ambient (equivalent to 5–25°C)
+    const isNormal = diffVal !== null ? (diffVal >= 9 && diffVal <= 45) : true;
     return {
       date,
-      intAvg: `${intAvgVal.toFixed(1)}°C`,
-      intRange: `${intMin.toFixed(1)}–${intMax.toFixed(1)}°C`,
-      extAvg: extAvgVal !== null ? `${extAvgVal.toFixed(1)}°C` : 'N/A',
-      extRange: extMin !== null ? `${extMin.toFixed(1)}–${extMax.toFixed(1)}°C` : 'N/A',
-      diff: diffVal !== null ? `${diffVal.toFixed(1)}°C` : 'N/A',
+      intAvg: `${intAvgVal.toFixed(1)}°F`,
+      intRange: `${intMin.toFixed(1)}–${intMax.toFixed(1)}°F`,
+      extAvg: extAvgVal !== null ? `${extAvgVal.toFixed(1)}°F` : 'N/A',
+      extRange: extMin !== null ? `${extMin.toFixed(1)}–${extMax.toFixed(1)}°F` : 'N/A',
+      diff: diffVal !== null ? `${diffVal.toFixed(1)}°F` : 'N/A',
       status: isNormal ? 'Normal' : 'Warning',
     };
   });
@@ -83,7 +87,7 @@ function AnalyticsChart({ data, view }) {
         ? [
             {
               type: 'bar',
-              label: 'Temp Difference (°C)',
+              label: 'Temp Difference (°F)',
               data: data.tempDiff,
               backgroundColor: 'rgba(34,197,94,0.75)',
               borderWidth: 0,
@@ -94,7 +98,7 @@ function AnalyticsChart({ data, view }) {
             },
             {
               type: 'line',
-              label: 'Internal Avg (°C)',
+              label: 'Internal Avg (°F)',
               data: data.internalAvg,
               borderColor: '#f5a623',
               borderWidth: 2.5,
@@ -108,7 +112,7 @@ function AnalyticsChart({ data, view }) {
             },
             {
               type: 'line',
-              label: 'External Avg (°C)',
+              label: 'External Avg (°F)',
               data: data.externalAvg,
               borderColor: '#1e2d4a',
               borderWidth: 2,
@@ -125,7 +129,7 @@ function AnalyticsChart({ data, view }) {
         : [
             {
               type: 'line',
-              label: 'Internal Avg (°C)',
+              label: 'Internal Avg (°F)',
               data: data.internalAvg,
               borderColor: '#f5a623',
               borderWidth: 2.5,
@@ -137,7 +141,7 @@ function AnalyticsChart({ data, view }) {
             },
             {
               type: 'line',
-              label: 'External Avg (°C)',
+              label: 'External Avg (°F)',
               data: data.externalAvg,
               borderColor: '#1e2d4a',
               borderWidth: 2,
@@ -201,7 +205,7 @@ function AnalyticsChart({ data, view }) {
                 color: '#94a3b8',
                 font: { size: 10, family: "'DM Sans', system-ui" },
                 maxTicksLimit: 6,
-                callback: v => `${v}°C`,
+                callback: v => `${v}°F`,
               },
               min: 0,
             },
@@ -226,6 +230,8 @@ function AnalyticsChart({ data, view }) {
 }
 
 const RANGE_DAYS = { '24H': 1, '7D': 7, '30D': 30 };
+// Limits sized to cover the full time window at 10-min bucket resolution
+const RANGE_LIMITS = { '24H': 300, '7D': 1500, '30D': 5000 };
 const FILTER_OPTIONS = ['All', 'Normal', 'Warning'];
 
 function exportToCSV(summaries, range) {
@@ -273,13 +279,15 @@ export default function Analytics() {
     if (!id) return;
 
     const days = RANGE_DAYS[selectedRange];
+    // Use range-appropriate limits to ensure the full dataset is fetched
+    const limit = RANGE_LIMITS[selectedRange] ?? 500;
     setDataLoading(true);
     try {
       const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
 
       const [readingsRes, extRes] = await Promise.allSettled([
-        apiFetch(`/api/readings/since?hiveId=${id}&since=${since}&order=asc&limit=500`),
-        apiFetch(`/api/external-conditions/since?hiveId=${id}&since=${since}&order=asc`),
+        apiFetch(`/api/readings/since?hiveId=${id}&since=${since}&order=asc&limit=${limit}`),
+        apiFetch(`/api/external-conditions/since?hiveId=${id}&since=${since}&order=asc&limit=${limit}`),
       ]);
 
       const readings = readingsRes.status === 'fulfilled'
@@ -398,7 +406,7 @@ export default function Analytics() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Beehive Temperature Analytics</div>
-                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>Comparing internal retention vs external ambient (°C)</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>Comparing internal retention vs external ambient (°F)</div>
               </div>
               <div style={{ display: 'flex', gap: '4px' }}>
                 {['comparison', 'ranges'].map(v => (

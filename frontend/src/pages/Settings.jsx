@@ -180,16 +180,35 @@ const PREF_KEY = 'asheville_settings_v1';
 function loadLocalPrefs() {
   try {
     const raw = localStorage.getItem(PREF_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Migrate old Celsius defaults (values clearly below 60 are Celsius)
+      if (
+        parseFloat(parsed.criticalLow) < 60 ||
+        parseFloat(parsed.criticalHigh) < 60
+      ) {
+        return {
+          ...parsed,
+          criticalLow: '91',
+          criticalHigh: '104',
+          optimalLow: '93',
+          optimalHigh: '99',
+          tempUnit: 'fahrenheit',
+        };
+      }
+      return parsed;
+    }
   } catch {}
+  // Defaults in Fahrenheit
+  // 33°C → 91°F, 40°C → 104°F, 34°C → 93°F, 37°C → 99°F
   return {
-    criticalLow: '33',
-    criticalHigh: '40',
-    optimalLow: '34',
-    optimalHigh: '37',
+    criticalLow: '91',
+    criticalHigh: '104',
+    optimalLow: '93',
+    optimalHigh: '99',
     alertEmail: '',
     interval: '10',
-    tempUnit: 'celsius',
+    tempUnit: 'fahrenheit',
     enableCritical: true,
     enableWarning: true,
     enableInfo: false,
@@ -222,7 +241,6 @@ export default function Settings() {
   const setLocalPref = (key, val) => setLocalPrefs(p => ({ ...p, [key]: val }));
 
   useEffect(() => {
-    // Wait for auth to be confirmed before fetching user/hive/device data
     if (!authReady) return;
     if (authError) {
       setDeviceLoading(false);
@@ -243,7 +261,6 @@ export default function Settings() {
           setAccountEmail(user.email || '');
           setSavedDisplayName(user.username || '');
           setSavedAccountEmail(user.email || '');
-          // Pre-fill alert email from user email if not already set
           setLocalPrefs(p => ({
             ...p,
             alertEmail: p.alertEmail || user.email || '',
@@ -277,7 +294,7 @@ export default function Settings() {
     setSaving(true);
     const errors = [];
 
-    // Validate threshold logic
+    // Validate threshold logic (all values are in Fahrenheit)
     const cl = parseFloat(localPrefs.criticalLow);
     const ch = parseFloat(localPrefs.criticalHigh);
     const ol = parseFloat(localPrefs.optimalLow);
@@ -299,13 +316,12 @@ export default function Settings() {
     }
 
     try {
-      // Save local preferences (thresholds, alerts, sensor config)
-      saveLocalPrefs(localPrefs);
-      setSavedPrefs(localPrefs);
+      // Always lock tempUnit to fahrenheit
+      const prefsToSave = { ...localPrefs, tempUnit: 'fahrenheit' };
+      saveLocalPrefs(prefsToSave);
+      setSavedPrefs(prefsToSave);
+      setLocalPrefs(prefsToSave);
 
-      // Note: The backend has no PATCH /api/auth/me endpoint for updating username/email.
-      // The change-password endpoint handles password updates.
-      // We save account display values locally for now.
       setSavedDisplayName(displayName);
       setSavedAccountEmail(accountEmail);
 
@@ -364,18 +380,18 @@ export default function Settings() {
 
         <div style={{ padding: '0 28px 28px', maxWidth: '800px' }}>
 
-          <SectionCard title="Temperature Thresholds" description={`Define critical and optimal temperature ranges for your hive (${localPrefs.tempUnit === 'celsius' ? '°C' : '°F'})`}>
+          <SectionCard title="Temperature Thresholds" description="Define critical and optimal temperature ranges for your hive (°F)">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <FormGroup label={`Critical Low (${localPrefs.tempUnit === 'celsius' ? '°C' : '°F'})`} hint="Alert when temperature drops below this value">
+              <FormGroup label="Critical Low (°F)" hint="Alert when temperature drops below this value">
                 <StyledInput type="number" step="0.1" value={localPrefs.criticalLow} onChange={e => setLocalPref('criticalLow', e.target.value)} />
               </FormGroup>
-              <FormGroup label={`Critical High (${localPrefs.tempUnit === 'celsius' ? '°C' : '°F'})`} hint="Alert when temperature exceeds this value">
+              <FormGroup label="Critical High (°F)" hint="Alert when temperature exceeds this value">
                 <StyledInput type="number" step="0.1" value={localPrefs.criticalHigh} onChange={e => setLocalPref('criticalHigh', e.target.value)} />
               </FormGroup>
-              <FormGroup label={`Optimal Range Low (${localPrefs.tempUnit === 'celsius' ? '°C' : '°F'})`}>
+              <FormGroup label="Optimal Range Low (°F)">
                 <StyledInput type="number" step="0.1" value={localPrefs.optimalLow} onChange={e => setLocalPref('optimalLow', e.target.value)} />
               </FormGroup>
-              <FormGroup label={`Optimal Range High (${localPrefs.tempUnit === 'celsius' ? '°C' : '°F'})`}>
+              <FormGroup label="Optimal Range High (°F)">
                 <StyledInput type="number" step="0.1" value={localPrefs.optimalHigh} onChange={e => setLocalPref('optimalHigh', e.target.value)} />
               </FormGroup>
             </div>
@@ -418,11 +434,8 @@ export default function Settings() {
                   <option value="30">Every 30 minutes</option>
                 </StyledSelect>
               </FormGroup>
-              <FormGroup label="Temperature Unit">
-                <StyledSelect value={localPrefs.tempUnit} onChange={e => setLocalPref('tempUnit', e.target.value)}>
-                  <option value="celsius">Celsius (°C)</option>
-                  <option value="fahrenheit">Fahrenheit (°F)</option>
-                </StyledSelect>
+              <FormGroup label="Temperature Unit" hint="All temperatures are displayed in Fahrenheit">
+                <StyledInput type="text" value="Fahrenheit (°F)" disabled />
               </FormGroup>
             </div>
           </SectionCard>

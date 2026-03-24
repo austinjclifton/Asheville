@@ -5,6 +5,7 @@ import { apiFetch, cToF } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
 const RANGE_HOURS = { '24H': 24, '7D': 24 * 7, '30D': 24 * 30 };
+const RANGE_LIMITS = { '24H': 200, '7D': 2000, '30D': 5000 };
 
 // ── Setup Wizard ──────────────────────────────────────────────────────────────
 
@@ -70,8 +71,6 @@ function SetupWizard({ onComplete }) {
     }
   };
 
-  // Use relative path so the proxy handles it correctly in dev,
-  // and in production it resolves to the same origin as the frontend.
   const ingestUrl = `${window.location.origin}/ingest/readings`;
   const examplePayload = device ? JSON.stringify({ deviceId: String(device.id), temperature: "34.5", rssi: "-70" }, null, 2) : '';
 
@@ -191,7 +190,6 @@ function SetupWizard({ onComplete }) {
 // ── No-readings banner ────────────────────────────────────────────────────────
 
 function NoReadingsBanner({ deviceId }) {
-  // Use the same origin as the page so the vite proxy routes it correctly in dev
   const ingestUrl = `${window.location.origin}/ingest/readings`;
   const curlCmd = `curl -X POST ${ingestUrl} \\
   -H "Content-Type: application/json" \\
@@ -241,8 +239,8 @@ function DashboardChart({ data }) {
       chartRef.current = new Chart(ctx, {
         type: 'line',
         data: { labels: data.labels, datasets: [
-          { label: 'Internal (°C)', data: data.internal, borderColor: '#f5a623', borderWidth: 2.5, backgroundColor: amberGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#f5a623', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, order: 1 },
-          { label: 'External (°C)', data: data.external && data.external.some(v=>v!==null) ? data.external : data.internal.map(()=>null), borderColor: '#1e2d4a', borderWidth: 2, backgroundColor: grayGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#1e2d4a', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, order: 2 },
+          { label: 'Internal (°F)', data: data.internal, borderColor: '#f5a623', borderWidth: 2.5, backgroundColor: amberGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#f5a623', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, order: 1 },
+          { label: 'External (°F)', data: data.external && data.external.some(v=>v!==null) ? data.external : data.internal.map(()=>null), borderColor: '#1e2d4a', borderWidth: 2, backgroundColor: grayGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#1e2d4a', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, order: 2 },
         ]},
         options: {
           responsive: true, maintainAspectRatio: false,
@@ -254,7 +252,7 @@ function DashboardChart({ data }) {
           },
           scales: {
             x: { grid: { color: 'rgba(100,116,139,0.10)', lineWidth: 1, borderDash: [4,4] }, border: { display: false }, ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxTicksLimit: 9, maxRotation: 0 } },
-            y: { position: 'left', grid: { color: 'rgba(100,116,139,0.10)', lineWidth: 1, borderDash: [4,4] }, border: { display: false }, ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxTicksLimit: 6, callback: v => `${v}°C` }, min: 0 },
+            y: { position: 'left', grid: { color: 'rgba(100,116,139,0.10)', lineWidth: 1, borderDash: [4,4] }, border: { display: false }, ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxTicksLimit: 6, callback: v => `${v}°F` }, min: 0 },
           },
         },
       });
@@ -275,8 +273,6 @@ function DashboardChart({ data }) {
 function TempCard({ title, value, unit, delta, sensor, accentColor, Icon }) {
   const isNeg = delta < 0;
   const isZero = delta === 0;
-  // value is null when no reading exists yet — show a proper placeholder instead
-  // of rendering null/undefined or an em-dash at 42px which looks like a line
   const hasValue = value !== null && value !== undefined && value !== '…';
 
   return (
@@ -290,7 +286,7 @@ function TempCard({ title, value, unit, delta, sensor, accentColor, Icon }) {
           </div>
           {hasValue && !isZero && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: isNeg ? '#ef4444' : '#22c55e', background: isNeg ? '#fef2f2' : '#f0fdf4', padding: '3px 9px', borderRadius: '6px', lineHeight: 1 }}>
-              {isNeg ? '▼' : '▲'} {Math.abs(delta).toFixed(1)}°C
+              {isNeg ? '▼' : '▲'} {Math.abs(delta).toFixed(1)}°F
             </div>
           )}
         </div>
@@ -298,7 +294,7 @@ function TempCard({ title, value, unit, delta, sensor, accentColor, Icon }) {
         {hasValue ? (
           <div style={{ fontSize: '42px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.03em', lineHeight: 1, display: 'flex', alignItems: 'baseline', gap: '3px' }}>
             {value}
-            <span style={{ fontSize: '18px', fontWeight: 500, color: '#64748b' }}>{unit || '°C'}</span>
+            <span style={{ fontSize: '18px', fontWeight: 500, color: '#64748b' }}>{unit || '°F'}</span>
           </div>
         ) : (
           <div style={{ paddingTop: '4px', paddingBottom: '4px' }}>
@@ -328,13 +324,13 @@ function SystemEventList({ hiveId }) {
     apiFetch(`/api/readings/since?hiveId=${hiveId}&since=${since}&order=desc&limit=5`)
       .then(res => {
         const readings = res?.readings ?? [];
-        // Build simple events from readings
         const mapped = readings.map(r => {
-          const tc = parseFloat(r.temperature);
+          // Convert Celsius from sensor to Fahrenheit for display
+          const tf = cToF(parseFloat(r.temperature));
           let type = 'info';
-          let msg = `Temperature reading: ${tc.toFixed(1)}°C`;
-          if (tc < 33) { type = 'warning'; msg = `Low temperature detected: ${tc.toFixed(1)}°C`; }
-          else if (tc > 37) { type = 'warning'; msg = `High temperature detected: ${tc.toFixed(1)}°C`; }
+          let msg = `Temperature reading: ${tf.toFixed(1)}°F`;
+          if (tf < 91) { type = 'warning'; msg = `Low temperature detected: ${tf.toFixed(1)}°F`; }
+          else if (tf > 99) { type = 'warning'; msg = `High temperature detected: ${tf.toFixed(1)}°F`; }
           const d = new Date(r.bucket_at);
           return {
             type,
@@ -450,8 +446,10 @@ export default function Dashboard() {
     setChartLoading(true);
     try {
       const since = new Date(Date.now() - RANGE_HOURS[range] * 3600 * 1000).toISOString();
+      const limit = RANGE_LIMITS[range] ?? 200;
+
       const [readingsRes, extRes] = await Promise.allSettled([
-        apiFetch(`/api/readings/since?hiveId=${id}&since=${since}&order=asc&limit=200`),
+        apiFetch(`/api/readings/since?hiveId=${id}&since=${since}&order=asc&limit=${limit}`),
         apiFetch(`/api/external-conditions/since?hiveId=${id}&since=${since}&order=asc`),
       ]);
 
@@ -471,7 +469,11 @@ export default function Dashboard() {
             ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
         });
-        const internal = readings.map(r => parseFloat(parseFloat(r.temperature ?? 0).toFixed(2)));
+
+        // Convert Celsius sensor readings to Fahrenheit for display
+        const internal = readings.map(r => cToF(parseFloat(r.temperature ?? 0)));
+
+        // External conditions are already in Fahrenheit (OpenWeather imperial units)
         const external = readings.map(r => {
           const ts = Math.floor(new Date(r.bucket_at).getTime() / (10 * 60 * 1000));
           for (const offset of [0, 1, -1]) {
@@ -501,10 +503,13 @@ export default function Dashboard() {
     fetchChartData(newHive.id, '24H');
   };
 
-  const latestC = latest?.temperature != null
-    ? parseFloat(parseFloat(latest.temperature).toFixed(1))
+  // Convert Celsius sensor reading to Fahrenheit for display
+  const latestF = latest?.temperature != null
+    ? cToF(latest.temperature)
     : null;
-  const externalC = externalCondition?.temperature != null
+
+  // External condition temperature is already in Fahrenheit (OpenWeather imperial)
+  const externalF = externalCondition?.temperature != null
     ? parseFloat(parseFloat(externalCondition.temperature).toFixed(1))
     : null;
 
@@ -561,8 +566,8 @@ export default function Dashboard() {
           <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
             <TempCard
               title="Internal Temperature"
-              value={loading ? '…' : latestC}
-              unit="°C"
+              value={loading ? '…' : latestF}
+              unit="°F"
               delta={internalDelta}
               sensor={device ? `Device ${device.id}` : 'No device registered'}
               accentColor="#f5a623"
@@ -570,7 +575,7 @@ export default function Dashboard() {
             />
             <TempCard
               title="External Temperature"
-              value={loading ? '…' : externalC}
+              value={loading ? '…' : externalF}
               unit="°F"
               delta={externalDelta}
               sensor={externalCondition?.provider ? `Provider: ${externalCondition.provider}` : 'External sensor'}
@@ -587,7 +592,7 @@ export default function Dashboard() {
                     Temperature Analysis
                     {chartLoading && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#94a3b8', fontWeight: 500, textTransform: 'none' }}>Loading…</span>}
                   </div>
-                  <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '3px' }}>Internal vs External Correlation (°C)</div>
+                  <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '3px' }}>Internal vs External Correlation (°F)</div>
                 </div>
                 <div style={{ display: 'flex', gap: '4px' }}>
                   {['24H', '7D', '30D'].map(r => (
