@@ -26,14 +26,8 @@ export async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-/** Convert Celsius to Fahrenheit */
+
 export function cToF(c) {
   if (c == null) return null;
-  return parseFloat(((c * 9) / 5 + 32).toFixed(1));
-}
-
-/** Convert Fahrenheit to Celsius */
-export function fToC(f) {
-  if (f == null) return null;
-  return parseFloat(((f - 32) * 5 / 9).toFixed(1));
+  return parseFloat(parseFloat(c).toFixed(1)); 
 }
