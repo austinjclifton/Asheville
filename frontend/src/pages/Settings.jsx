@@ -3,170 +3,134 @@ import Navigation from "../components/Navigation";
 import { apiFetch } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
-function SectionCard({ title, description, children }) {
+const PREF_KEY = 'asheville_settings_v1';
+
+function loadLocalPrefs() {
+  try {
+    const raw = localStorage.getItem(PREF_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (parseFloat(p.criticalLow) < 60 || parseFloat(p.criticalHigh) < 60) {
+        return { ...p, criticalLow: '91', criticalHigh: '104', optimalLow: '93', optimalHigh: '99', tempUnit: 'fahrenheit' };
+      }
+      return p;
+    }
+  } catch {}
+  return { criticalLow: '91', criticalHigh: '104', optimalLow: '93', optimalHigh: '99', alertEmail: '', interval: '10', tempUnit: 'fahrenheit', enableCritical: true, enableWarning: true, enableInfo: false, enableEmail: true, enableSMS: false, role: 'Beekeeper', phoneNum: '' };
+}
+function saveLocalPrefs(p) { try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch {} }
+
+function timeAgo(dateStr) {
+  if (!dateStr) return 'Never';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min${mins !== 1 ? 's' : ''} ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr${hrs !== 1 ? 's' : ''} ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// ── Threshold Slider ──────────────────────────────────────────────
+function ThresholdSlider({ label, value, min, max, onChange, color, alertText }) {
+  const pct = Math.max(0, Math.min(100, ((parseFloat(value) - min) / (max - min)) * 100));
   return (
-    <div style={{ background: 'white', borderRadius: '12px', boxShadow: 'var(--shadow-sm)', marginBottom: '20px', overflow: 'hidden' }}>
-      <div style={{ padding: '20px 28px', borderBottom: '1px solid #f1f5f9', background: '#fafbfc' }}>
-        <div style={{ fontSize: '15px', fontWeight: 700, color: '#1e2d4a' }}>{title}</div>
-        {description && <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '3px' }}>{description}</div>}
+    <div style={{ marginBottom: '4px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</span>
+        <span style={{ fontSize: '14px', fontWeight: 700, color }}>{parseFloat(value).toFixed(1)}°F</span>
       </div>
-      <div style={{ padding: '24px 28px' }}>{children}</div>
+      <input
+        type="range" min={min} max={max} step={0.5} value={parseFloat(value)}
+        onChange={e => onChange(e.target.value)}
+        style={{ width: '100%', background: `linear-gradient(to right, ${color} ${pct}%, #e2e8f0 ${pct}%)`, '--slider-color': color }}
+      />
+      {alertText && <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px', lineHeight: 1.5 }}>{alertText}</p>}
     </div>
   );
 }
 
-function FormGroup({ label, hint, children }) {
+// ── Toggle Row ────────────────────────────────────────────────────
+function ToggleRow({ icon, label, description, checked, onChange, activeColor }) {
   return (
-    <div style={{ marginBottom: '20px' }}>
-      <label style={{ display: 'block', marginBottom: '7px', fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-        {label}
-      </label>
-      {children}
-      {hint && <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '5px' }}>{hint}</div>}
-    </div>
-  );
-}
-
-const inputStyle = {
-  width: '100%', padding: '10px 14px',
-  border: '1.5px solid #e2e8f0', borderRadius: '10px',
-  fontSize: '14px', color: '#1e2d4a', background: '#f8fafc',
-  outline: 'none', transition: 'border-color 0.15s, background 0.15s',
-  fontFamily: "'DM Sans', system-ui, sans-serif",
-};
-
-function StyledInput({ style, disabled, ...props }) {
-  return (
-    <input
-      {...props}
-      disabled={disabled}
-      style={{ ...inputStyle, ...(disabled ? { opacity: 0.6, cursor: 'not-allowed', background: '#f1f5f9' } : {}), ...style }}
-      onFocus={e => { if (!disabled) { e.target.style.borderColor = '#1e2d4a'; e.target.style.background = 'white'; } }}
-      onBlur={e => { if (!disabled) { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = '#f8fafc'; } }}
-    />
-  );
-}
-
-function StyledSelect({ children, value, onChange }) {
-  return (
-    <select
-      value={value}
-      onChange={onChange}
-      style={{ ...inputStyle, appearance: 'none', cursor: 'pointer' }}
-      onFocus={e => { e.target.style.borderColor = '#1e2d4a'; e.target.style.background = 'white'; }}
-      onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = '#f8fafc'; }}
-    >
-      {children}
-    </select>
-  );
-}
-
-function Toggle({ label, description, checked, onChange }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #f1f5f9' }}>
-      <div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
+      <div style={{ width: '36px', height: '36px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#94a3b8' }}>
+        {icon}
+      </div>
+      <div style={{ flex: 1 }}>
         <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>{label}</div>
-        {description && <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>{description}</div>}
+        <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>{description}</div>
       </div>
       <button
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        style={{
-          width: '44px', height: '24px', borderRadius: '12px', border: 'none',
-          background: checked ? '#1e2d4a' : '#cbd5e1',
-          cursor: 'pointer', position: 'relative',
-          transition: 'background 0.2s', flexShrink: 0, marginLeft: '16px',
-        }}
+        role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
+        style={{ width: '46px', height: '26px', border: 'none', background: checked ? (activeColor || '#1e2d4a') : '#cbd5e1', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}
       >
-        <span style={{
-          position: 'absolute', top: '3px',
-          left: checked ? '23px' : '3px',
-          width: '18px', height: '18px', borderRadius: '50%',
-          background: 'white', transition: 'left 0.2s',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-        }} />
+        <span style={{ position: 'absolute', top: '4px', left: checked ? '24px' : '4px', width: '18px', height: '18px', background: 'white', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
       </button>
     </div>
   );
 }
 
+// ── Section Card ──────────────────────────────────────────────────
+function SectionCard({ icon, title, children }) {
+  return (
+    <div style={{ background: 'white', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
+        <span style={{ color: '#f5a623' }}>{icon}</span>
+        <span style={{ fontSize: '12px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{title}</span>
+      </div>
+      <div style={{ padding: '24px' }}>{children}</div>
+    </div>
+  );
+}
+
+// ── Field Input ───────────────────────────────────────────────────
+function Field({ label, value, onChange, type = 'text', disabled }) {
+  return (
+    <div>
+      <label style={{ display: 'block', marginBottom: '6px', fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.07em', textTransform: 'uppercase' }}>{label}</label>
+      <input
+        type={type} value={value} onChange={onChange ? e => onChange(e.target.value) : undefined}
+        disabled={disabled}
+        style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', fontSize: '14px', color: disabled ? '#94a3b8' : '#1e2d4a', background: disabled ? '#f8fafc' : 'white', outline: 'none', cursor: disabled ? 'default' : 'text' }}
+        onFocus={e => { if (!disabled) e.target.style.borderColor = '#1e2d4a'; }}
+        onBlur={e => { e.target.style.borderColor = '#e2e8f0'; }}
+      />
+    </div>
+  );
+}
+
+// ── Change Password Modal ─────────────────────────────────────────
 function ChangePasswordModal({ onClose, onSuccess }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    if (next !== confirm) { setError('New passwords do not match.'); return; }
+    e.preventDefault(); setError('');
+    if (next !== confirm) { setError('Passwords do not match.'); return; }
     if (next.length < 8) { setError('Password must be at least 8 characters.'); return; }
     setLoading(true);
-    try {
-      await apiFetch('/api/auth/change-password', {
-        method: 'PATCH',
-        body: JSON.stringify({ currentPassword: current, newPassword: next }),
-      });
-      onSuccess();
-    } catch (err) {
-      setError(err.message || 'Failed to change password. Check your current password and try again.');
-    } finally {
-      setLoading(false);
-    }
+    try { await apiFetch('/api/auth/change-password', { method: 'PATCH', body: JSON.stringify({ currentPassword: current, newPassword: next }) }); onSuccess(); }
+    catch (err) { setError(err.message || 'Failed to change password.'); }
+    finally { setLoading(false); }
   };
-
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000, animation: 'fadeIn 0.15s ease',
-    }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{
-        background: 'white', borderRadius: '16px', padding: '32px',
-        width: '100%', maxWidth: '400px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-        animation: 'fadeIn 0.2s ease',
-      }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: 'white', padding: '32px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <div style={{ fontSize: '17px', fontWeight: 800, color: '#1e2d4a' }}>Change Password</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+          <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a' }}>Change Password</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '20px', lineHeight: 1 }}>×</button>
         </div>
-
-        {error && (
-          <div style={{ marginBottom: '16px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#dc2626', fontSize: '13px', fontWeight: 500 }}>
-            {error}
-          </div>
-        )}
-
+        {error && <div style={{ marginBottom: '16px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: '13px' }}>{error}</div>}
         <form onSubmit={handleSubmit}>
-          <FormGroup label="Current Password">
-            <StyledInput type="password" value={current} onChange={e => setCurrent(e.target.value)} required placeholder="Enter current password" />
-          </FormGroup>
-          <FormGroup label="New Password">
-            <StyledInput type="password" value={next} onChange={e => setNext(e.target.value)} required placeholder="At least 8 characters" />
-          </FormGroup>
-          <FormGroup label="Confirm New Password">
-            <StyledInput type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required placeholder="Repeat new password" />
-          </FormGroup>
-          <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-            <button type="button" onClick={onClose} style={{
-              flex: 1, padding: '10px', border: '1.5px solid #e2e8f0', borderRadius: '10px',
-              background: 'white', fontSize: '14px', fontWeight: 600, color: '#64748b', cursor: 'pointer',
-            }}>
-              Cancel
-            </button>
-            <button type="submit" disabled={loading} style={{
-              flex: 1, padding: '10px', border: 'none', borderRadius: '10px',
-              background: loading ? '#94a3b8' : '#1e2d4a', color: 'white',
-              fontSize: '14px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
-            }}>
-              {loading ? 'Saving…' : 'Update Password'}
-            </button>
+          <div style={{ marginBottom: '14px' }}><Field label="Current Password" value={current} onChange={setCurrent} type="password" /></div>
+          <div style={{ marginBottom: '14px' }}><Field label="New Password" value={next} onChange={setNext} type="password" /></div>
+          <div style={{ marginBottom: '20px' }}><Field label="Confirm New Password" value={confirm} onChange={setConfirm} type="password" /></div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button type="button" onClick={onClose} style={{ flex: 1, padding: '10px', border: '1px solid #e2e8f0', background: 'white', fontSize: '14px', fontWeight: 600, color: '#64748b', cursor: 'pointer' }}>Cancel</button>
+            <button type="submit" disabled={loading} style={{ flex: 1, padding: '10px', border: 'none', background: loading ? '#94a3b8' : '#1e2d4a', color: 'white', fontSize: '14px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>{loading ? 'Saving…' : 'Update'}</button>
           </div>
         </form>
       </div>
@@ -174,334 +138,200 @@ function ChangePasswordModal({ onClose, onSuccess }) {
   );
 }
 
-// Locally-persisted threshold/alert preferences (no backend endpoint for these)
-const PREF_KEY = 'asheville_settings_v1';
-
-function loadLocalPrefs() {
-  try {
-    const raw = localStorage.getItem(PREF_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      // Migrate old Celsius defaults (values clearly below 60 are Celsius)
-      if (
-        parseFloat(parsed.criticalLow) < 60 ||
-        parseFloat(parsed.criticalHigh) < 60
-      ) {
-        return {
-          ...parsed,
-          criticalLow: '91',
-          criticalHigh: '104',
-          optimalLow: '93',
-          optimalHigh: '99',
-          tempUnit: 'fahrenheit',
-        };
-      }
-      return parsed;
-    }
-  } catch {}
-  // Defaults in Fahrenheit
-  // 33°C → 91°F, 40°C → 104°F, 34°C → 93°F, 37°C → 99°F
-  return {
-    criticalLow: '91',
-    criticalHigh: '104',
-    optimalLow: '93',
-    optimalHigh: '99',
-    alertEmail: '',
-    interval: '10',
-    tempUnit: 'fahrenheit',
-    enableCritical: true,
-    enableWarning: true,
-    enableInfo: false,
-    enableEmail: true,
-  };
-}
-
-function saveLocalPrefs(prefs) {
-  try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch {}
-}
-
+// ── Main Settings ─────────────────────────────────────────────────
 export default function Settings() {
   const { ready: authReady, error: authError } = useAuth();
   const [localPrefs, setLocalPrefs] = useState(loadLocalPrefs);
   const [savedPrefs, setSavedPrefs] = useState(loadLocalPrefs);
-
-  // Account fields from API
   const [displayName, setDisplayName] = useState('');
   const [accountEmail, setAccountEmail] = useState('');
-  const [savedDisplayName, setSavedDisplayName] = useState('');
-  const [savedAccountEmail, setSavedAccountEmail] = useState('');
-
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [deviceId, setDeviceId] = useState(null);
-  const [deviceLoading, setDeviceLoading] = useState(true);
+  const [deviceLastSeen, setDeviceLastSeen] = useState(null);
   const [hiveInfo, setHiveInfo] = useState(null);
+  const [deviceLoading, setDeviceLoading] = useState(true);
 
   const setLocalPref = (key, val) => setLocalPrefs(p => ({ ...p, [key]: val }));
 
   useEffect(() => {
-    if (!authReady) return;
-    if (authError) {
-      setDeviceLoading(false);
-      return;
-    }
-
-    async function loadInitialData() {
+    if (!authReady || authError) { setDeviceLoading(false); return; }
+    async function load() {
       try {
         const [meRes, hivesRes, devicesRes] = await Promise.allSettled([
-          apiFetch('/api/auth/me'),
-          apiFetch('/api/hives'),
-          apiFetch('/api/devices'),
+          apiFetch('/api/auth/me'), apiFetch('/api/hives'), apiFetch('/api/devices'),
         ]);
-
-        if (meRes.status === 'fulfilled' && meRes.value?.user) {
-          const user = meRes.value.user;
-          setDisplayName(user.username || '');
-          setAccountEmail(user.email || '');
-          setSavedDisplayName(user.username || '');
-          setSavedAccountEmail(user.email || '');
-          setLocalPrefs(p => ({
-            ...p,
-            alertEmail: p.alertEmail || user.email || '',
-          }));
+        if (meRes.status === 'fulfilled') {
+          const u = meRes.value?.user;
+          if (u) { setDisplayName(u.username || ''); setAccountEmail(u.email || ''); if (u.phone && !localPrefs.phoneNum) setLocalPref('phoneNum', u.phone); }
         }
-
-        if (hivesRes.status === 'fulfilled') {
-          const hives = hivesRes.value?.hives ?? [];
-          if (hives.length > 0) setHiveInfo(hives[0]);
-        }
-
-        if (devicesRes.status === 'fulfilled') {
-          const devices = devicesRes.value?.devices ?? [];
-          if (devices.length > 0) setDeviceId(devices[0].id);
-        }
-      } catch {
-        // silent
-      } finally {
-        setDeviceLoading(false);
-      }
+        if (hivesRes.status === 'fulfilled') { const h = hivesRes.value?.hives ?? []; if (h.length) setHiveInfo(h[0]); }
+        if (devicesRes.status === 'fulfilled') { const d = devicesRes.value?.devices ?? []; if (d.length) { setDeviceId(d[0].id); setDeviceLastSeen(d[0].last_seen_at); } }
+      } catch {} finally { setDeviceLoading(false); }
     }
-    loadInitialData();
+    load();
   }, [authReady, authError]);
 
-  const showToast = (msg, ok = true) => {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 2800);
-  };
+  const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 2800); };
 
   const handleSave = async () => {
     setSaving(true);
-    const errors = [];
-
-    // Validate threshold logic (all values are in Fahrenheit)
-    const cl = parseFloat(localPrefs.criticalLow);
-    const ch = parseFloat(localPrefs.criticalHigh);
-    const ol = parseFloat(localPrefs.optimalLow);
-    const oh = parseFloat(localPrefs.optimalHigh);
-    if (isNaN(cl) || isNaN(ch) || isNaN(ol) || isNaN(oh)) {
-      errors.push('All threshold values must be valid numbers.');
-    } else if (cl >= ch) {
-      errors.push('Critical low must be less than critical high.');
-    } else if (ol >= oh) {
-      errors.push('Optimal low must be less than optimal high.');
-    } else if (ol < cl || oh > ch) {
-      errors.push('Optimal range must be within critical range.');
-    }
-
-    if (errors.length > 0) {
-      showToast(errors[0], false);
-      setSaving(false);
-      return;
-    }
-
-    try {
-      // Always lock tempUnit to fahrenheit
-      const prefsToSave = { ...localPrefs, tempUnit: 'fahrenheit' };
-      saveLocalPrefs(prefsToSave);
-      setSavedPrefs(prefsToSave);
-      setLocalPrefs(prefsToSave);
-
-      setSavedDisplayName(displayName);
-      setSavedAccountEmail(accountEmail);
-
-      showToast('Settings saved successfully');
-    } catch (err) {
-      showToast(err.message || 'Failed to save settings', false);
-    } finally {
-      setSaving(false);
-    }
+    const cl = parseFloat(localPrefs.criticalLow), ch = parseFloat(localPrefs.criticalHigh);
+    const ol = parseFloat(localPrefs.optimalLow), oh = parseFloat(localPrefs.optimalHigh);
+    if (isNaN(cl)||isNaN(ch)||isNaN(ol)||isNaN(oh)) { showToast('All thresholds must be valid numbers.', false); setSaving(false); return; }
+    if (cl >= ch) { showToast('Critical low must be less than critical high.', false); setSaving(false); return; }
+    if (ol >= oh) { showToast('Optimal low must be less than optimal high.', false); setSaving(false); return; }
+    if (ol < cl || oh > ch) { showToast('Optimal range must be within critical range.', false); setSaving(false); return; }
+    const toSave = { ...localPrefs, tempUnit: 'fahrenheit' };
+    saveLocalPrefs(toSave); setSavedPrefs(toSave); setLocalPrefs(toSave);
+    showToast('Settings saved successfully'); setSaving(false);
   };
 
-  const handleCancel = () => {
-    setLocalPrefs(savedPrefs);
-    setDisplayName(savedDisplayName);
-    setAccountEmail(savedAccountEmail);
-    showToast('Changes discarded', true);
-  };
+  const isOnline = deviceLastSeen && (Date.now() - new Date(deviceLastSeen).getTime()) < 30 * 60 * 1000;
+  const sensorId = deviceId ? `HM-${String(deviceId).padStart(4,'0')}-X` : '—';
 
-  const sensorLabel = deviceLoading
-    ? 'Loading…'
-    : deviceId
-      ? `DEVICE-${String(deviceId).padStart(3, '0')}`
-      : 'No device found';
-
-  const hiveLabel = hiveInfo ? `${hiveInfo.name} (ID: ${hiveInfo.id})` : (deviceLoading ? 'Loading…' : 'No hive found');
+  const PersonIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+  const BellIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>;
+  const ThermIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>;
+  const ShieldIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
+  const MailIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>;
+  const PhoneIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f0f2f5' }}>
       <Navigation />
-
-      {showPasswordModal && (
-        <ChangePasswordModal
-          onClose={() => setShowPasswordModal(false)}
-          onSuccess={() => { setShowPasswordModal(false); showToast('Password updated successfully'); }}
-        />
-      )}
-
+      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} onSuccess={() => { setShowPasswordModal(false); showToast('Password updated'); }} />}
       {toast && (
-        <div style={{
-          position: 'fixed', top: '20px', right: '20px', zIndex: 999,
-          background: toast.ok ? '#1e2d4a' : '#ef4444',
-          color: 'white', padding: '10px 18px', borderRadius: '10px',
-          fontSize: '13px', fontWeight: 600,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          animation: 'fadeIn 0.2s ease',
-        }}>
+        <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 999, background: toast.ok ? '#1e2d4a' : '#ef4444', color: 'white', padding: '10px 18px', fontSize: '13px', fontWeight: 600, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', animation: 'fadeIn 0.2s ease' }}>
           {toast.msg}
         </div>
       )}
 
       <main style={{ flex: 1, overflow: 'auto' }}>
-        <div style={{ padding: '24px 28px 0', marginBottom: '20px' }}>
-          <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Settings</h1>
-          <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '3px' }}>Manage your system preferences and alert configuration</div>
+        {/* Top bar */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', borderBottom: '1px solid #e2e8f0', background: 'white' }}>
+          <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Settings</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
+            HIVE ID: <strong style={{ color: '#1e2d4a' }}>#{hiveInfo?.id ?? '—'}</strong>
+            <span style={{ width: '8px', height: '8px', background: isOnline ? '#22c55e' : '#94a3b8', display: 'inline-block', boxShadow: isOnline ? '0 0 0 3px rgba(34,197,94,0.2)' : 'none' }} />
+          </div>
         </div>
 
-        <div style={{ padding: '0 28px 28px', maxWidth: '800px' }}>
-
-          <SectionCard title="Temperature Thresholds" description="Define critical and optimal temperature ranges for your hive (°F)">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <FormGroup label="Critical Low (°F)" hint="Alert when temperature drops below this value">
-                <StyledInput type="number" step="0.1" value={localPrefs.criticalLow} onChange={e => setLocalPref('criticalLow', e.target.value)} />
-              </FormGroup>
-              <FormGroup label="Critical High (°F)" hint="Alert when temperature exceeds this value">
-                <StyledInput type="number" step="0.1" value={localPrefs.criticalHigh} onChange={e => setLocalPref('criticalHigh', e.target.value)} />
-              </FormGroup>
-              <FormGroup label="Optimal Range Low (°F)">
-                <StyledInput type="number" step="0.1" value={localPrefs.optimalLow} onChange={e => setLocalPref('optimalLow', e.target.value)} />
-              </FormGroup>
-              <FormGroup label="Optimal Range High (°F)">
-                <StyledInput type="number" step="0.1" value={localPrefs.optimalHigh} onChange={e => setLocalPref('optimalHigh', e.target.value)} />
-              </FormGroup>
+        <div style={{ padding: '28px 32px' }}>
+          {/* Config header */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
+            <div>
+              <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.01em' }}>Configuration</h1>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Manage Preferences &amp; Alerts</div>
             </div>
-          </SectionCard>
-
-          <SectionCard title="Alert Preferences" description="Configure when and how you receive notifications">
-            <div style={{ marginBottom: '20px' }}>
-              <Toggle label="Enable critical alerts" description="Receive alerts for critical threshold violations" checked={localPrefs.enableCritical} onChange={v => setLocalPref('enableCritical', v)} />
-              <Toggle label="Enable warning alerts" description="Receive alerts for warning conditions" checked={localPrefs.enableWarning} onChange={v => setLocalPref('enableWarning', v)} />
-              <Toggle label="Enable info notifications" description="Receive informational system events" checked={localPrefs.enableInfo} onChange={v => setLocalPref('enableInfo', v)} />
-              <Toggle label="Email notifications" description="Send alerts to your notification email" checked={localPrefs.enableEmail} onChange={v => setLocalPref('enableEmail', v)} />
-            </div>
-            <FormGroup label="Notification Email">
-              <StyledInput
-                type="email"
-                value={localPrefs.alertEmail}
-                onChange={e => setLocalPref('alertEmail', e.target.value)}
-                placeholder="your@email.com"
-                disabled={!localPrefs.enableEmail}
-              />
-            </FormGroup>
-          </SectionCard>
-
-          <SectionCard title="Sensor Configuration" description="View your monitoring hardware settings">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <FormGroup label="Hive" hint="The hive this sensor monitors">
-                <StyledInput type="text" value={hiveLabel} disabled />
-              </FormGroup>
-              <FormGroup label="Sensor ID" hint="The device registered to your hive">
-                <StyledInput type="text" value={sensorLabel} disabled />
-              </FormGroup>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <FormGroup label="Reading Interval">
-                <StyledSelect value={localPrefs.interval} onChange={e => setLocalPref('interval', e.target.value)}>
-                  <option value="1">Every 1 minute</option>
-                  <option value="5">Every 5 minutes</option>
-                  <option value="10">Every 10 minutes</option>
-                  <option value="15">Every 15 minutes</option>
-                  <option value="30">Every 30 minutes</option>
-                </StyledSelect>
-              </FormGroup>
-              <FormGroup label="Temperature Unit" hint="All temperatures are displayed in Fahrenheit">
-                <StyledInput type="text" value="Fahrenheit (°F)" disabled />
-              </FormGroup>
-            </div>
-          </SectionCard>
-
-          <SectionCard title="Account Settings" description="View your account information and update your password">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <FormGroup label="Username" hint="Your account username (read-only)">
-                <StyledInput
-                  type="text"
-                  value={displayName}
-                  onChange={e => setDisplayName(e.target.value)}
-                  placeholder="Your username"
-                  disabled
-                />
-              </FormGroup>
-              <FormGroup label="Email Address" hint="Your registered email (read-only)">
-                <StyledInput
-                  type="email"
-                  value={accountEmail}
-                  onChange={e => setAccountEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  disabled
-                />
-              </FormGroup>
-            </div>
-            <button
-              onClick={() => setShowPasswordModal(true)}
-              style={{
-                padding: '9px 18px', background: 'white', color: '#ef4444',
-                border: '1.5px solid #fecaca', borderRadius: '8px',
-                fontSize: '13px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
-              onMouseLeave={e => e.currentTarget.style.background = 'white'}
-            >
-              Change Password
-            </button>
-          </SectionCard>
-
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-            <button
-              onClick={handleCancel}
-              style={{
-                padding: '10px 24px', background: 'white', border: '1.5px solid #e2e8f0',
-                borderRadius: '10px', fontSize: '14px', fontWeight: 600, color: '#64748b',
-                cursor: 'pointer', transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-              onMouseLeave={e => e.currentTarget.style.background = 'white'}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              style={{
-                padding: '10px 28px', background: saving ? '#94a3b8' : '#1e2d4a',
-                color: 'white', border: 'none', borderRadius: '10px',
-                fontSize: '14px', fontWeight: 700,
-                cursor: saving ? 'not-allowed' : 'pointer', transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => { if (!saving) e.currentTarget.style.background = '#2d4168'; }}
-              onMouseLeave={e => { if (!saving) e.currentTarget.style.background = '#1e2d4a'; }}
-            >
+            <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: saving ? '#94a3b8' : '#1e2d4a', color: 'white', border: 'none', fontSize: '13px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
+          </div>
+
+          {/* Operator Profile */}
+          <SectionCard icon={<PersonIcon />} title="Operator Profile">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+              <Field label="Full Name" value={displayName} disabled />
+              <Field label="Role" value={localPrefs.role || 'Beekeeper'} onChange={v => setLocalPref('role', v)} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <Field label="Email Address" value={accountEmail} disabled />
+              <Field label="Phone Number" value={localPrefs.phoneNum || ''} onChange={v => setLocalPref('phoneNum', v)} />
+            </div>
+            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+              <button onClick={() => setShowPasswordModal(true)} style={{ background: 'none', border: 'none', color: '#f5a623', fontSize: '13px', fontWeight: 700, cursor: 'pointer', padding: 0, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                Change Password →
+              </button>
+            </div>
+          </SectionCard>
+
+          {/* Notifications */}
+          <SectionCard icon={<BellIcon />} title="Notifications">
+            <ToggleRow
+              icon={<MailIcon />}
+              label="Email Digests"
+              description="Receive daily summary reports via email."
+              checked={localPrefs.enableEmail}
+              onChange={v => setLocalPref('enableEmail', v)}
+              activeColor="#1e2d4a"
+            />
+            <ToggleRow
+              icon={<PhoneIcon />}
+              label="SMS Critical Alerts"
+              description="Instant text messages for critical temperature drops."
+              checked={localPrefs.enableSMS || false}
+              onChange={v => setLocalPref('enableSMS', v)}
+              activeColor="#f5a623"
+            />
+          </SectionCard>
+
+          {/* Sensor Thresholds */}
+          <SectionCard icon={<ThermIcon />} title="Sensor Thresholds">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '28px' }}>
+              <ThresholdSlider
+                label="Min Internal Temp"
+                value={localPrefs.criticalLow}
+                min={60} max={110}
+                onChange={v => setLocalPref('criticalLow', v)}
+                color="#1e2d4a"
+                alertText="Alert triggers when core temperature drops below this value."
+              />
+              <ThresholdSlider
+                label="Max Internal Temp"
+                value={localPrefs.criticalHigh}
+                min={90} max={140}
+                onChange={v => setLocalPref('criticalHigh', v)}
+                color="#f5a623"
+                alertText="Alert triggers when core temperature exceeds this value."
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
+              <ThresholdSlider
+                label="Warning Range Low"
+                value={localPrefs.optimalLow}
+                min={60} max={110}
+                onChange={v => setLocalPref('optimalLow', v)}
+                color="#3b82f6"
+                alertText="Warning triggered when temperature falls below optimal range."
+              />
+              <ThresholdSlider
+                label="Warning Range High"
+                value={localPrefs.optimalHigh}
+                min={90} max={140}
+                onChange={v => setLocalPref('optimalHigh', v)}
+                color="#3b82f6"
+                alertText="Warning triggered when temperature rises above optimal range."
+              />
+            </div>
+          </SectionCard>
+
+          {/* System Information */}
+          <div style={{ background: 'white', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ color: '#94a3b8' }}><ShieldIcon /></span>
+              <span style={{ fontSize: '12px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>System Information</span>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
+              {[
+                { label: 'Firmware Ver.', value: 'v2.4.1-stable' },
+                { label: 'Last Sync', value: deviceLoading ? '—' : timeAgo(deviceLastSeen) },
+                { label: 'Sensor ID', value: deviceLoading ? '—' : sensorId },
+              ].map(item => (
+                <div key={item.label}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{item.label}</div>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>{item.value}</div>
+                </div>
+              ))}
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Status</div>
+                <span style={{ display: 'inline-block', padding: '3px 10px', border: `1px solid ${isOnline ? '#22c55e' : '#94a3b8'}`, fontSize: '11px', fontWeight: 700, color: isOnline ? '#16a34a' : '#64748b', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  {deviceLoading ? '—' : isOnline ? 'Online' : 'Offline'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </main>
