@@ -28,11 +28,11 @@ function deriveAlertsFromReadings(readings, prefs) {
     } else if (tf > critHigh) {
       alerts.push({ id: id++, severity: 'critical', status: 'active', title: 'Temperature Above Critical Threshold', description: `Hive temperature rose to ${tf.toFixed(1)}°F, above the critical high of ${critHigh}°F. Immediate attention required.`, time: timeStr, sensor: sensorLabel, temperature: tf });
     } else if (tf < optLow) {
-      alerts.push({ id: id++, severity: 'warning', status: 'active', title: 'Temperature Below Optimal Range', description: `Temperature at ${tf.toFixed(1)}°F is below the optimal low of ${optLow}°F. Monitor closely.`, time: timeStr, sensor: sensorLabel, temperature: tf });
+      alerts.push({ id: id++, severity: 'warning', status: 'active', title: 'Temperature Below Warning Range', description: `Temperature at ${tf.toFixed(1)}°F is below the warning low of ${optLow}°F. Monitor closely.`, time: timeStr, sensor: sensorLabel, temperature: tf });
     } else if (tf > optHigh) {
-      alerts.push({ id: id++, severity: 'warning', status: 'active', title: 'Temperature Above Optimal Range', description: `Temperature at ${tf.toFixed(1)}°F is above the optimal high of ${optHigh}°F. Monitor closely.`, time: timeStr, sensor: sensorLabel, temperature: tf });
+      alerts.push({ id: id++, severity: 'warning', status: 'active', title: 'Temperature Above Warning Range', description: `Temperature at ${tf.toFixed(1)}°F is above the warning high of ${optHigh}°F. Monitor closely.`, time: timeStr, sensor: sensorLabel, temperature: tf });
     } else {
-      alerts.push({ id: id++, severity: 'info', status: 'resolved', title: 'Temperature Within Normal Range', description: `Temperature stable at ${tf.toFixed(1)}°F within optimal range (${optLow}–${optHigh}°F).`, time: timeStr, sensor: sensorLabel, temperature: tf });
+      alerts.push({ id: id++, severity: 'info', status: 'resolved', title: 'Temperature Within Normal Range', description: `Temperature stable at ${tf.toFixed(1)}°F within warning range (${optLow}–${optHigh}°F).`, time: timeStr, sensor: sensorLabel, temperature: tf });
     }
   });
   return alerts;

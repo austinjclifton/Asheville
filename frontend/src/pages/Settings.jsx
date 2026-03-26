@@ -181,8 +181,8 @@ export default function Settings() {
     const ol = parseFloat(localPrefs.optimalLow), oh = parseFloat(localPrefs.optimalHigh);
     if (isNaN(cl)||isNaN(ch)||isNaN(ol)||isNaN(oh)) { showToast('All thresholds must be valid numbers.', false); setSaving(false); return; }
     if (cl >= ch) { showToast('Critical low must be less than critical high.', false); setSaving(false); return; }
-    if (ol >= oh) { showToast('Optimal low must be less than optimal high.', false); setSaving(false); return; }
-    if (ol < cl || oh > ch) { showToast('Optimal range must be within critical range.', false); setSaving(false); return; }
+    if (ol >= oh) { showToast('Warning low must be less than warning high.', false); setSaving(false); return; }
+    if (ol < cl || oh > ch) { showToast('Warning range must be within critical range.', false); setSaving(false); return; }
     const toSave = { ...localPrefs, tempUnit: 'fahrenheit' };
     saveLocalPrefs(toSave); setSavedPrefs(toSave); setLocalPrefs(toSave);
     showToast('Settings saved successfully'); setSaving(false);
@@ -295,7 +295,7 @@ export default function Settings() {
                 min={60} max={110}
                 onChange={v => setLocalPref('optimalLow', v)}
                 color="#3b82f6"
-                alertText="Warning triggered when temperature falls below optimal range."
+                alertText="Warning triggered when temperature falls below warning range."
               />
               <ThresholdSlider
                 label="Warning Range High"
@@ -303,7 +303,7 @@ export default function Settings() {
                 min={90} max={140}
                 onChange={v => setLocalPref('optimalHigh', v)}
                 color="#3b82f6"
-                alertText="Warning triggered when temperature rises above optimal range."
+                alertText="Warning triggered when temperature rises above warning range."
               />
             </div>
           </SectionCard>
