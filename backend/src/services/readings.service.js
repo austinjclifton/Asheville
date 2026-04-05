@@ -73,7 +73,7 @@ exports.getHiveDailySince = async ({ beekeeperId, hiveId, since, until }) => {
   const sinceDate = parseDateLike("since", since);
   parseOptionalUntil(sinceDate, until);
 
-  return readingRepo.getHiveDailySince(); // expected to throw NOT_IMPLEMENTED
+  return readingRepo.getHiveDailySince();
 };
 
 /* ========================================================================== */
@@ -113,7 +113,8 @@ function parseOptionalUntil(sinceDate, until) {
 }
 
 function normalizeLimit(limit, { max, defaultValue }) {
-  if (limit === undefined || limit === null || limit === "") return defaultValue;
+  if (limit === undefined || limit === null || limit === "")
+    return defaultValue;
 
   const n = Number(limit);
   if (!Number.isInteger(n) || n <= 0) {

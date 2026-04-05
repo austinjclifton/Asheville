@@ -1,33 +1,8 @@
 "use strict";
-
-/**
- * External Conditions Repository (PostgreSQL)
- * Table: external_condition
- *
- * Schema notes:
- * - uq_external_condition_location_bucket_at UNIQUE (location_id, bucket_at)
- * - chk_external_condition_fetched_at enforces:
- *     pending => fetched_at IS NULL
- *     success/failed => fetched_at IS NOT NULL
- */
-
 const { query } = require("./pool");
 
-/* ========================================================================== */
-/* Writes                                                                      */
-/* ========================================================================== */
-
 /**
- * Upsert by (location_id, bucket_at).
- *
- * Required:
- * - locationId
- * - bucketAt
- * - provider
- * - status: 'pending' | 'success' | 'failed'
- *
- * IMPORTANT:
- * - fetched_at must be NULL for pending, and NOT NULL for success/failed
+ * Create a new external condition record
  */
 exports.upsert = async ({
   locationId,
@@ -121,10 +96,9 @@ exports.upsert = async ({
   }
 };
 
-/* ========================================================================== */
-/* Reads                                                                       */
-/* ========================================================================== */
-
+/**
+ * Get an external condition record by locationId and bucketAt
+ */
 exports.getByLocationAndBucket = async ({ locationId, bucketAt }) => {
   const rows = await query(
     `
@@ -140,6 +114,9 @@ exports.getByLocationAndBucket = async ({ locationId, bucketAt }) => {
   return rows[0] ?? null;
 };
 
+/**
+ * Get the latest external condition by locationId
+ */
 exports.getLatestByLocationId = async ({ locationId }) => {
   const rows = await query(
     `
@@ -155,6 +132,9 @@ exports.getLatestByLocationId = async ({ locationId }) => {
   return rows[0] ?? null;
 };
 
+/**
+ * List external condition records by locationId since a given time
+ */
 exports.listByLocationSince = async ({
   locationId,
   since,
@@ -178,6 +158,8 @@ exports.listByLocationSince = async ({
     [locationId, since, until, limitVal],
   );
 };
+
+
 
 /* ========================================================================== */
 /* Helpers                                                                     */

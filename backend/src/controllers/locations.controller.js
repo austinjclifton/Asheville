@@ -9,11 +9,11 @@ const locationsService = require("../services/locations.service.js");
 /**
  * GET /api/locations?limit=&order=
  */
-exports.list = async (req, res, next) => {
+exports.listLocations = async (req, res, next) => {
   try {
     const q = safeQuery(req);
 
-    const locations = await locationsService.list({
+    const locations = await locationsService.listLocations({
       limit: q.limit,
       order: q.order,
     });
@@ -53,7 +53,7 @@ exports.create = async (req, res, next) => {
   try {
     const body = safeBody(req);
 
-    const location = await locationsService.createOrGet({
+    const location = await locationsService.createOrGetLocation({
       name: body.name,
       lat: requireBodyField(body, "lat"),
       lon: requireBodyField(body, "lon"),

@@ -215,6 +215,54 @@ exports.changePassword = async (req, res, next) => {
   }
 };
 
+/**
+ * PATCH /api/auth/alert-settings
+ * Update the authenticated user's alert threshold settings and toggles
+ */
+exports.updateBeekeeperAlertSettings = async (req, res, next) => {
+  try {
+    const body = safeBody(req);
+    const settingsBody = getAlertSettingsBody(body);
+
+    const alertSettings = await authService.updateBeekeeperAlertSettings({
+      userId: assertAuthedUserId(req),
+      alertsEnabled: firstDefined(
+        settingsBody.alerts_enabled,
+        settingsBody.alertsEnabled,
+      ),
+      warningLow: firstDefined(
+        settingsBody.warning_low_threshold,
+        settingsBody.warningLow,
+      ),
+      warningHigh: firstDefined(
+        settingsBody.warning_high_threshold,
+        settingsBody.warningHigh,
+      ),
+      criticalLow: firstDefined(
+        settingsBody.critical_low_threshold,
+        settingsBody.criticalLow,
+      ),
+      criticalHigh: firstDefined(
+        settingsBody.critical_high_threshold,
+        settingsBody.criticalHigh,
+      ),
+    });
+
+    return res.status(200).json({
+      alert_settings: {
+        alerts_enabled: alertSettings.alertsEnabled,
+        warning_low_threshold: alertSettings.warningLow,
+        warning_high_threshold: alertSettings.warningHigh,
+        critical_low_threshold: alertSettings.criticalLow,
+        critical_high_threshold: alertSettings.criticalHigh,
+        updated_at: alertSettings.updatedAt,
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 /* ========================================================================== */
 /* DELETE                                                                      */
 /* ========================================================================== */
@@ -245,6 +293,26 @@ exports.deleteUser = async (req, res, next) => {
 
 function safeBody(req) {
   return req.body ?? {};
+}
+
+function getAlertSettingsBody(body) {
+  if (body.alert_settings && typeof body.alert_settings === "object") {
+    return body.alert_settings;
+  }
+
+  if (body.alertSettings && typeof body.alertSettings === "object") {
+    return body.alertSettings;
+  }
+
+  return body;
+}
+
+function firstDefined(...values) {
+  for (const value of values) {
+    if (value !== undefined) return value;
+  }
+
+  return undefined;
 }
 
 function asTrimmedString(value) {

@@ -3,9 +3,9 @@
 const express = require("express");
 const router = express.Router();
 
-const authController = require("../controllers/auth.controller.js");
 const { requireAuth } = require("../middleware/requireAuth.js");
 const { requireCsrf } = require("../middleware/requireCsrf.js");
+const authController = require("../controllers/auth.controller.js");
 
 /**
  * GET /api/auth/me
@@ -58,6 +58,17 @@ router.patch(
   requireAuth,
   requireCsrf,
   authController.changePassword,
+);
+
+/**
+ * PATCH /api/auth/alert-settings
+ * Updates the authenticated user's alert thresholds and toggles (Auth + CSRF)
+ */
+router.patch(
+  "/alert-settings",
+  requireAuth,
+  requireCsrf,
+  authController.updateBeekeeperAlertSettings,
 );
 
 /**

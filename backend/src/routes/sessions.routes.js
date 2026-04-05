@@ -3,9 +3,9 @@
 const express = require("express");
 const router = express.Router();
 
-const sessionController = require("../controllers/session.controller.js");
 const { requireAuth } = require("../middleware/requireAuth.js");
 const { requireCsrf } = require("../middleware/requireCsrf.js");
+const sessionController = require("../controllers/session.controller.js");
 
 /**
  * GET /api/sessions/current

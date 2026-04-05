@@ -2,16 +2,12 @@
 const { query } = require("./pool");
 
 /**
- * Insert a reading with dedupe semantics.
- *
- * Behavior:
- * - If inserted: returns 201 { inserted: true, reading: <row> }
- * - If duplicate: returns 409 { inserted: false, error: <error msg> }
+ * Insert a new internal hive reading (WITH dedupe semantics)
  */
 exports.createReadingDeduped10m = async ({
   deviceId,
   bucketAt,
-  temperatureC,
+  temperature,
   rssiDbm = null,
 }) => {
   try {
@@ -58,7 +54,7 @@ exports.createReadingDeduped10m = async ({
 
       LIMIT 1
       `,
-      [deviceId, bucketAt, temperatureC, rssiDbm],
+      [deviceId, bucketAt, temperature, rssiDbm],
     );
 
     const row = rows[0] ?? null;

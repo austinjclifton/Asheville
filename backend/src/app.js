@@ -26,6 +26,7 @@ const readingRoutes = require("./routes/readings.routes");
 const ingestRoutes = require("./routes/ingest.routes");
 const externalRoutes = require("./routes/externalConditions.routes.js");
 const locationsRoutes = require("./routes/locations.routes.js");
+const alertsRoutes = require("./routes/alerts.routes.js");
 
 // ----- Swagger -----
 const { setupSwagger } = require("./utils/swagger.js");
@@ -67,6 +68,7 @@ app.use("/api/devices", deviceRoutes);
 app.use("/api/readings", readingRoutes);
 app.use("/api/external-conditions", externalRoutes);
 app.use("/api/locations", locationsRoutes);
+app.use("/api/alerts", alertsRoutes);
 
 app.use("/ingest", ingestRoutes);
 

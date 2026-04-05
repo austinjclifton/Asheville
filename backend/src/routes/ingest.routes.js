@@ -1,10 +1,10 @@
 "use strict";
 
 const express = require("express");
-const ingestController = require("../controllers/ingest.controller.js");
-const { requireIngestToken } = require("../middleware/requireIngestToken.js");
-
 const router = express.Router();
+
+const { requireIngestToken } = require("../middleware/requireIngestToken.js");
+const ingestController = require("../controllers/ingest.controller.js");
 
 /**
  * POST /ingest/readings

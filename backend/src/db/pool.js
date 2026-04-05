@@ -1,20 +1,4 @@
 "use strict";
-
-/**
- * Database Connection Pool (PostgreSQL)
- *
- * Responsibilities:
- * - Maintain a shared pool of PostgreSQL connections
- * - Reuse connections across queries
- * - Enforce a maximum number of concurrent DB connections
- * - Provide a thin query interface for repositories
- * - Support explicit transactions when needed
- *
- * This file intentionally contains:
- * - No business logic
- * - No domain SQL
- */
-
 const { Pool } = require("pg");
 
 /* ========================================================================== */

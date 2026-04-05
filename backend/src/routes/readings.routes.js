@@ -1,10 +1,10 @@
 "use strict";
 
 const express = require("express");
+const router = express.Router();
+
 const { requireAuth } = require("../middleware/requireAuth.js");
 const readingsController = require("../controllers/readings.controller.js");
-
-const router = express.Router();
 
 /**
  * GET /api/readings/latest

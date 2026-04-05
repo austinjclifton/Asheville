@@ -1,19 +1,9 @@
 "use strict";
-
-/**
- * Readings Repository (PostgreSQL)
- * Table: reading
- *
- * Notes:
- * - Ownership enforced via joins: beekeeper -> hive -> device -> reading
- */
-
 const { query } = require("./pool");
 
-/* ========================================================================== */
-/* Dashboard reads                                                             */
-/* ========================================================================== */
-
+/**
+ * Get readings for a hive since a given time, optionally until another time, with limit and order
+ */
 exports.getHiveReadingsSince = async ({
   beekeeperId,
   hiveId,
@@ -51,6 +41,9 @@ exports.getHiveReadingsSince = async ({
   );
 };
 
+/**
+ * Get the latest reading for a hive
+ */
 exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
   const rows = await query(
     `
@@ -83,23 +76,7 @@ exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
   return rows[0] ?? null;
 };
 
-/* ========================================================================== */
-/* Daily aggregates (stubs)                                                    */
-/* ========================================================================== */
 
-exports.getHiveDailySince = async () => {
-  const e = new Error("Daily aggregates not implemented");
-  e.status = 501;
-  e.code = "NOT_IMPLEMENTED";
-  throw e;
-};
-
-exports.getLatestDailyForHive = async () => {
-  const e = new Error("Daily aggregates not implemented");
-  e.status = 501;
-  e.code = "NOT_IMPLEMENTED";
-  throw e;
-};
 
 /* ========================================================================== */
 /* Helpers                                                                     */

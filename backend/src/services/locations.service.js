@@ -27,11 +27,11 @@ exports.getCoordsById = async ({ locationId }) => {
   return locationsRepo.getCoordsById({ locationId: id });
 };
 
-exports.createOrGet = async ({ name, lat, lon }) => {
+exports.createOrGetLocation = async ({ name, lat, lon }) => {
   const nm = normalizeName(name);
   const v = validateLatLon(lat, lon);
 
-  return locationsRepo.createOrGet({
+  return locationsRepo.createOrGetLocation({
     name: nm,
     lat: v.lat,
     lon: v.lon,
@@ -45,10 +45,10 @@ exports.findByLatLon = async ({ lat, lon }) => {
   return locationsRepo.findByLatLonE6({ latE6: v.latE6, lonE6: v.lonE6 });
 };
 
-exports.list = async ({ limit, order }) => {
+exports.listLocations = async ({ limit, order }) => {
   const lim = normalizeLimit(limit, LIST_LIMIT);
   const ord = normalizeOrder(order);
-  return locationsRepo.list({ limit: lim, order: ord });
+  return locationsRepo.listLocations({ limit: lim, order: ord });
 };
 
 exports.update = async ({ locationId, name, lat, lon }) => {
@@ -101,7 +101,8 @@ function requireFiniteNumber(name, value) {
 }
 
 function normalizeLimit(limit, { defaultValue, max }) {
-  if (limit === undefined || limit === null || limit === "") return defaultValue;
+  if (limit === undefined || limit === null || limit === "")
+    return defaultValue;
   const n = Number(limit);
   if (!Number.isInteger(n) || n <= 0) throw badRequest("Invalid limit");
   return Math.min(n, max);

@@ -1,16 +1,16 @@
 "use strict";
 
 const express = require("express");
+const router = express.Router();
+
 const { requireAuth } = require("../middleware/requireAuth.js");
 const locationsController = require("../controllers/locations.controller.js");
-
-const router = express.Router();
 
 /**
  * GET /api/locations
  * Lists all locations
  */
-router.get("/", requireAuth, locationsController.list);
+router.get("/", requireAuth, locationsController.listLocations);
 
 /**
  * GET /api/locations/:locationId

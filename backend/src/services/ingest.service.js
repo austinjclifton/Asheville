@@ -2,6 +2,7 @@
 
 const ingestRepo = require("../db/ingest.db.js");
 const externalConditionsService = require("./externalConditions.service.js");
+const alertsService = require("./alerts.service.js");
 
 const TEN_MIN_MS = 10 * 60 * 1000;
 const TEMP_MIN = -100;
@@ -23,21 +24,29 @@ exports.createReading = async ({ deviceId, temperature, rssi }) => {
     throw badRequest(`rssi must be between ${RSSI_MIN} and ${RSSI_MAX}`);
   }
 
-  // *** use this for real 10-minute dedupe behavior
+  // Keep this nearby for when bucketed ingest dedupe is restored
   //const bucketAt = floorToTenMinutes(new Date()).toISOString();
 
-  // *** uncomment this during testing when you want every request to bypass bucket dedupe
+  // For now each request uses its own timestamp as bucket_at
   const bucketAt = new Date().toISOString();
 
-  //insert at the repo level
   const { inserted, reading } = await ingestRepo.createReadingDeduped10m({
     deviceId: deviceId,
     bucketAt,
-    temperatureC: temperature,
+    temperature: temperature,
     rssiDbm: rssi,
   });
 
-  //if ingest is successful, trigger external conditions ingest for this device
+  // check if the inserted reading is alert-worthy
+  if (inserted && reading) {
+    try {
+      await alertsService.processReading(reading);
+    } catch (e) {
+      console.error("Alert processing failed:", e?.message || e);
+    }
+  }
+
+  // external conditions (secondary side effect)
   if (inserted && TRIGGER_EXTERNAL_ON_INGEST) {
     try {
       await externalConditionsService.fetchCurrentForDevice({
@@ -51,7 +60,7 @@ exports.createReading = async ({ deviceId, temperature, rssi }) => {
   return { inserted, reading };
 };
 
-//error handling helpers
+// Error helpers
 function httpError(status, code, message) {
   const err = new Error(message);
   err.status = status;
@@ -63,7 +72,7 @@ function badRequest(message) {
   return httpError(400, "VALIDATION_ERROR", message);
 }
 
-//helper to floor a date to the nearest 10-minute mark, used in prod
+// Floors a date to the nearest 10-minute mark
 function floorToTenMinutes(date) {
   const ms = date.getTime();
   return new Date(Math.floor(ms / TEN_MIN_MS) * TEN_MIN_MS);

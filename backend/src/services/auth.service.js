@@ -103,7 +103,7 @@ exports.changePassword = async ({ userId, currentPassword, newPassword }) => {
     throw badRequest("New password must be different from current password");
   }
 
-  const user = await usersRepo.findAuthById({ id: userId });
+  const user = await usersRepo.findById({ id: userId });
   if (!user) throw notFound("User not found");
 
   const ok = await bcrypt.compare(current, user.password_hash);
@@ -119,13 +119,41 @@ exports.changePassword = async ({ userId, currentPassword, newPassword }) => {
   });
 };
 
+exports.updateBeekeeperAlertSettings = async ({
+  userId,
+  alertsEnabled,
+  warningLow,
+  warningHigh,
+  criticalLow,
+  criticalHigh,
+}) => {
+  validateUserId(userId);
+
+  const normalized = normalizeAlertSettingsPatch({
+    alertsEnabled,
+    warningLow,
+    warningHigh,
+    criticalLow,
+    criticalHigh,
+  });
+
+  const updated = await usersRepo.updateBeekeeperAlertSettings({
+    beekeeperId: Number(userId),
+    ...normalized,
+  });
+
+  if (!updated) throw notFound("User not found");
+
+  return toAlertSettings(updated);
+};
+
 exports.resetPassword = async ({ userId, newPassword }) => {
   validateUserId(userId);
 
   const next = normalizePassword(newPassword);
   validatePassword(next);
 
-  const user = await usersRepo.findAuthById({ id: userId });
+  const user = await usersRepo.findById({ id: userId });
   if (!user) throw notFound("User not found");
 
   const newHash = await bcrypt.hash(next, BCRYPT_ROUNDS);
@@ -152,7 +180,7 @@ exports.deleteUserAndSessions = async ({ userId, requesterId }) => {
     beekeeperId: Number(userId),
   });
 
-  await usersRepo.deleteById({ id: userId });
+  await usersRepo.deleteBeekeeperById({ id: userId });
 };
 
 /* ========================================================================== */
@@ -163,9 +191,9 @@ async function findAuthUserByIdentifier(identifier) {
   // Route by contains @ which is correct enough for login
   // Strict email validity is enforced during registration
   if (looksLikeEmail(identifier)) {
-    return usersRepo.findAuthByEmail({ email: normalizeEmail(identifier) });
+    return usersRepo.findByEmail({ email: normalizeEmail(identifier) });
   }
-  return usersRepo.findAuthByUsername({ username: identifier });
+  return usersRepo.findByUsername({ username: identifier });
 }
 
 function looksLikeEmail(value) {
@@ -194,6 +222,98 @@ function normalizeIdentifier(identifier) {
 function normalizePassword(password) {
   // Do not trim passwords since whitespace may be intentional
   return password;
+}
+
+function normalizeAlertSettingsPatch({
+  alertsEnabled,
+  warningLow,
+  warningHigh,
+  criticalLow,
+  criticalHigh,
+}) {
+  const normalized = {
+    alertsEnabled: normalizeOptionalBoolean(alertsEnabled, "alertsEnabled"),
+    warningLow: normalizeOptionalNumberOrNull(warningLow, "warningLow"),
+    warningHigh: normalizeOptionalNumberOrNull(warningHigh, "warningHigh"),
+    criticalLow: normalizeOptionalNumberOrNull(criticalLow, "criticalLow"),
+    criticalHigh: normalizeOptionalNumberOrNull(criticalHigh, "criticalHigh"),
+  };
+
+  const thresholdKeys = [
+    "warningLow",
+    "warningHigh",
+    "criticalLow",
+    "criticalHigh",
+  ];
+  const thresholdValues = thresholdKeys.map((key) => normalized[key]);
+  const providedThresholdCount = thresholdValues.filter(
+    (value) => value !== undefined,
+  ).length;
+
+  if (providedThresholdCount !== 0 && providedThresholdCount !== 4) {
+    throw badRequest(
+      "warningLow, warningHigh, criticalLow, and criticalHigh must be provided together",
+    );
+  }
+
+  if (providedThresholdCount === 4) {
+    const allNull = thresholdValues.every((value) => value === null);
+    const anyNull = thresholdValues.some((value) => value === null);
+
+    if (!allNull && anyNull) {
+      throw badRequest(
+        "Threshold values must either all be numbers or all be null",
+      );
+    }
+
+    if (!allNull) {
+      if (!(normalized.criticalLow < normalized.warningLow)) {
+        throw badRequest(
+          "Thresholds must satisfy criticalLow < warningLow < warningHigh < criticalHigh",
+        );
+      }
+
+      if (!(normalized.warningLow < normalized.warningHigh)) {
+        throw badRequest(
+          "Thresholds must satisfy criticalLow < warningLow < warningHigh < criticalHigh",
+        );
+      }
+
+      if (!(normalized.warningHigh < normalized.criticalHigh)) {
+        throw badRequest(
+          "Thresholds must satisfy criticalLow < warningLow < warningHigh < criticalHigh",
+        );
+      }
+    }
+  }
+
+  const hasAnyField = Object.values(normalized).some(
+    (value) => value !== undefined,
+  );
+
+  if (!hasAnyField) {
+    throw badRequest("Provide at least one alert settings field to update");
+  }
+
+  return normalized;
+}
+
+function normalizeOptionalBoolean(value, field) {
+  if (value === undefined) return undefined;
+  if (typeof value === "boolean") return value;
+  throw badRequest(`${field} must be a boolean`);
+}
+
+function normalizeOptionalNumberOrNull(value, field) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+
+  const n = typeof value === "string" ? Number(value.trim()) : Number(value);
+  if (!Number.isFinite(n)) {
+    throw badRequest(`${field} must be a valid number or null`);
+  }
+
+  return n;
 }
 
 /* ========================================================================== */
@@ -266,6 +386,17 @@ function toPublicUser(user) {
     id: user.id,
     username: user.username,
     email: user.email,
+  };
+}
+
+function toAlertSettings(row) {
+  return {
+    alertsEnabled: row.alerts_enabled,
+    warningLow: row.warning_low_threshold,
+    warningHigh: row.warning_high_threshold,
+    criticalLow: row.critical_low_threshold,
+    criticalHigh: row.critical_high_threshold,
+    updatedAt: row.updated_at,
   };
 }
 

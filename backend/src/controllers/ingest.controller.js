@@ -14,7 +14,7 @@ const ingestService = require("../services/ingest.service.js");
  * Rules:
  * - deviceId, temperature, rssi are required
  * - recordedAt is NOT accepted from clients; server computes bucket_at
- * - If a reading already exists for (deviceId, current 10-minute bucket) -> 409
+ * - Returns 409 when the service reports an existing reading for the computed bucket_at value
  */
 exports.create = async (req, res, next) => {
   try {
@@ -27,7 +27,7 @@ exports.create = async (req, res, next) => {
       rssi,
     });
 
-    // return 409 if a reading has occured within the 10 min. bucket for this device
+    // Return 409 when the computed bucket_at already exists for this device
     if (!result.inserted) {
       return res.status(409).json({
         success: false,
@@ -36,7 +36,7 @@ exports.create = async (req, res, next) => {
       });
     }
 
-    // return 201 if the reading was successfully inserted
+    // Return 201 when the reading is inserted
     return res.status(201).json({
       success: true,
       inserted: true,

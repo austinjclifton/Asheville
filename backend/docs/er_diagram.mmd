@@ -10,6 +10,29 @@ erDiagram
     VARCHAR(255) password_hash
     VARCHAR(254) email UK
     VARCHAR(32) phone
+    BOOLEAN alerts_enabled
+    DOUBLE_PRECISION warning_low_threshold
+    DOUBLE_PRECISION warning_high_threshold
+    DOUBLE_PRECISION critical_low_threshold
+    DOUBLE_PRECISION critical_high_threshold
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+  ALERT {
+    BIGINT id PK
+    BIGINT reading_id UK, FK
+    BIGINT beekeeper_id FK
+    BIGINT hive_id FK
+    BIGINT device_id FK
+    VARCHAR(16) severity
+    VARCHAR(16) direction
+    DOUBLE_PRECISION threshold_value
+    DOUBLE_PRECISION temperature
+    BOOLEAN email_sent
+    TIMESTAMPTZ email_sent_at
+    TEXT email_error_message
+    BOOLEAN resolved
+    TIMESTAMPTZ resolved_at
     TIMESTAMPTZ created_at
     TIMESTAMPTZ updated_at
   }
@@ -100,3 +123,6 @@ erDiagram
   LOCATION  ||--o{ EXTERNAL_CONDITION : conditions
   BEEKEEPER ||--o{ SESSION : sessions
   BEEKEEPER ||--|| PASSWORD_RESET_TOKEN : reset_token
+
+  READING ||--|| ALERT : triggers
+  BEEKEEPER ||--o{ ALERT : receives

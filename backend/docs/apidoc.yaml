@@ -18,9 +18,12 @@ info:
         - POST /api/auth/login
         - GET /api/auth/csrf
 
-    External ingest API (/api/ingest/*)
+    External ingest API (/ingest/*)
     - Device telemetry ingest endpoint.
-    - If device authentication is enforced, it is validated inside the ingest controller.
+    - Accepted auth methods:
+      - Header: X-Ingest-Token: <token>
+      - Header: Authorization: Bearer <token>
+    - Token validation is enforced by ingest middleware.
 
 servers:
   - url: http://localhost:4000
@@ -36,6 +39,12 @@ tags:
     description: Authentication and account management
   - name: Sessions
     description: Session inspection and invalidation
+  - name: Alerts
+    description: View and resolve beekeeper alerts generated from hive readings
+  - name: External Conditions
+    description: Read and refresh weather conditions associated with a hive location
+  - name: Locations
+    description: Manage shared location records
   - name: Hives
     description: Manage hives (owned by authenticated beekeeper)
   - name: Devices
@@ -55,14 +64,14 @@ components:
       type: apiKey
       in: header
       name: X-CSRF-Token
-    deviceIdHeader:
+    ingestTokenHeader:
       type: apiKey
       in: header
-      name: X-Device-Id
-    deviceKeyHeader:
-      type: apiKey
-      in: header
-      name: X-Device-Key
+      name: X-Ingest-Token
+    ingestBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: token
 
   parameters:
     IdPath:
@@ -76,6 +85,15 @@ components:
 
     HiveIdPath:
       name: hiveId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+    LocationIdPath:
+      name: locationId
       in: path
       required: true
       schema:
@@ -247,7 +265,8 @@ components:
     User:
       type: object
       additionalProperties: false
-      required: [id, username, email, phone, created_at, updated_at]
+      description: Public authenticated user shape returned by auth and session endpoints.
+      required: [id, username, email]
       properties:
         id:
           type: integer
@@ -258,16 +277,6 @@ components:
         email:
           type: string
           maxLength: 254
-        phone:
-          type: string
-          maxLength: 32
-          nullable: true
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
 
     Session:
       type: object
@@ -314,10 +323,85 @@ components:
         session:
           $ref: "#/components/schemas/Session"
 
+    AlertSettingsFields:
+      type: object
+      additionalProperties: false
+      description: |
+        Alert settings patch fields.
+
+        Behavior enforced by the API:
+        - At least one field must be provided.
+        - If any threshold field is provided, all four threshold fields must be provided together.
+        - Threshold fields must be either all numbers or all null.
+        - Numeric thresholds must satisfy critical_low_threshold < warning_low_threshold < warning_high_threshold < critical_high_threshold.
+      properties:
+        alerts_enabled:
+          type: boolean
+        warning_low_threshold:
+          type: number
+          nullable: true
+        warning_high_threshold:
+          type: number
+          nullable: true
+        critical_low_threshold:
+          type: number
+          nullable: true
+        critical_high_threshold:
+          type: number
+          nullable: true
+
+    AlertSettingsNestedFields:
+      type: object
+      additionalProperties: false
+      required: [alert_settings]
+      properties:
+        alert_settings:
+          $ref: "#/components/schemas/AlertSettingsFields"
+
+    AlertSettings:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          alerts_enabled,
+          warning_low_threshold,
+          warning_high_threshold,
+          critical_low_threshold,
+          critical_high_threshold,
+          updated_at,
+        ]
+      properties:
+        alerts_enabled:
+          type: boolean
+        warning_low_threshold:
+          type: number
+          nullable: true
+        warning_high_threshold:
+          type: number
+          nullable: true
+        critical_low_threshold:
+          type: number
+          nullable: true
+        critical_high_threshold:
+          type: number
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+
+    AlertSettingsResponse:
+      type: object
+      additionalProperties: false
+      required: [alert_settings]
+      properties:
+        alert_settings:
+          $ref: "#/components/schemas/AlertSettings"
+
     Hive:
       type: object
       additionalProperties: false
-      required: [id, beekeeper_id, name, notes, created_at, updated_at]
+      required:
+        [id, beekeeper_id, name, notes, location_id, created_at, updated_at]
       properties:
         id:
           type: integer
@@ -330,6 +414,10 @@ components:
           maxLength: 100
         notes:
           type: string
+          nullable: true
+        location_id:
+          type: integer
+          format: int64
           nullable: true
         created_at:
           type: string
@@ -394,10 +482,243 @@ components:
         device:
           $ref: "#/components/schemas/Device"
 
+    Location:
+      type: object
+      additionalProperties: false
+      required: [id, name, lat, lon, lat_e6, lon_e6, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          nullable: true
+          maxLength: 120
+        lat:
+          type: number
+        lon:
+          type: number
+        lat_e6:
+          type: integer
+        lon_e6:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    LocationListResponse:
+      type: object
+      additionalProperties: false
+      required: [locations]
+      properties:
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Location"
+
+    LocationResponse:
+      type: object
+      additionalProperties: false
+      required: [location]
+      properties:
+        location:
+          $ref: "#/components/schemas/Location"
+
+    ExternalCondition:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          location_id,
+          bucket_at,
+          fetched_at,
+          provider,
+          status,
+          error_message,
+          temperature,
+          humidity_pct,
+          precip_mm,
+          wind_mps,
+          wind_gust_mps,
+          pressure_hpa,
+          cloud_pct,
+          raw_json,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: integer
+          format: int64
+        location_id:
+          type: integer
+          format: int64
+        bucket_at:
+          type: string
+          format: date-time
+        fetched_at:
+          type: string
+          format: date-time
+          nullable: true
+        provider:
+          type: string
+          maxLength: 40
+        status:
+          type: string
+          enum: [pending, success, failed]
+        error_message:
+          type: string
+          nullable: true
+        temperature:
+          type: number
+          nullable: true
+        humidity_pct:
+          type: number
+          nullable: true
+        precip_mm:
+          type: number
+          nullable: true
+        wind_mps:
+          type: number
+          nullable: true
+        wind_gust_mps:
+          type: number
+          nullable: true
+        pressure_hpa:
+          type: number
+          nullable: true
+        cloud_pct:
+          type: number
+          nullable: true
+        raw_json:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ExternalConditionResponse:
+      type: object
+      additionalProperties: false
+      required: [externalCondition]
+      properties:
+        externalCondition:
+          $ref: "#/components/schemas/ExternalCondition"
+
+    ExternalConditionListResponse:
+      type: object
+      additionalProperties: false
+      required: [externalConditions]
+      properties:
+        externalConditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalCondition"
+
+    Alert:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          reading_id,
+          beekeeper_id,
+          hive_id,
+          device_id,
+          severity,
+          direction,
+          threshold_value,
+          temperature,
+          email_sent,
+          email_sent_at,
+          email_error_message,
+          resolved,
+          resolved_at,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: integer
+          format: int64
+        reading_id:
+          type: integer
+          format: int64
+        beekeeper_id:
+          type: integer
+          format: int64
+        hive_id:
+          type: integer
+          format: int64
+        device_id:
+          type: integer
+          format: int64
+        severity:
+          type: string
+          enum: [warning, critical]
+        direction:
+          type: string
+          enum: [low, high]
+        threshold_value:
+          type: number
+        temperature:
+          type: number
+        email_sent:
+          type: boolean
+        email_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        email_error_message:
+          type: string
+          nullable: true
+        resolved:
+          type: boolean
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AlertResponse:
+      type: object
+      additionalProperties: false
+      required: [success, alert]
+      properties:
+        success:
+          type: boolean
+        alert:
+          $ref: "#/components/schemas/Alert"
+
+    AlertListResponse:
+      type: object
+      additionalProperties: false
+      required: [success, alerts]
+      properties:
+        success:
+          type: boolean
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alert"
+
     Reading:
       type: object
       additionalProperties: false
-      required: [id, device_id, recorded_at, temperature_f, battery_voltage, signal_strength, created_at]
+      required:
+        [id, device_id, bucket_at, received_at, temperature, rssi, created_at]
       properties:
         id:
           type: integer
@@ -405,20 +726,65 @@ components:
         device_id:
           type: integer
           format: int64
-        recorded_at:
+        bucket_at:
           type: string
           format: date-time
-        temperature_f:
+        received_at:
+          type: string
+          format: date-time
+        temperature:
           type: number
-        battery_voltage:
-          type: number
-          nullable: true
-        signal_strength:
+        rssi:
           type: number
           nullable: true
         created_at:
           type: string
           format: date-time
+
+    LatestHiveReading:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          hive_id,
+          id,
+          device_id,
+          bucket_at,
+          received_at,
+          temperature,
+          rssi,
+          created_at,
+        ]
+      properties:
+        hive_id:
+          type: integer
+          format: int64
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        device_id:
+          type: integer
+          format: int64
+          nullable: true
+        bucket_at:
+          type: string
+          format: date-time
+          nullable: true
+        received_at:
+          type: string
+          format: date-time
+          nullable: true
+        temperature:
+          type: number
+          nullable: true
+        rssi:
+          type: number
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
 
     ReadingListResponse:
       type: object
@@ -429,6 +795,42 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Reading"
+
+    LatestReadingResponse:
+      type: object
+      additionalProperties: false
+      required: [reading]
+      properties:
+        reading:
+          $ref: "#/components/schemas/LatestHiveReading"
+
+    IngestReadingResponse:
+      type: object
+      additionalProperties: false
+      required: [success, inserted, reading]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        inserted:
+          type: boolean
+          enum: [true]
+        reading:
+          $ref: "#/components/schemas/Reading"
+
+    IngestReadingConflictResponse:
+      type: object
+      additionalProperties: false
+      required: [success, inserted, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        inserted:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
 
 paths:
   /health:
@@ -602,15 +1004,22 @@ paths:
       responses:
         "200":
           description: Logged out
+          headers:
+            Set-Cookie:
+              description: Clears the HttpOnly session cookie
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Success"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
 
   /api/auth/change-password:
-    post:
+    patch:
       tags: [Auth]
       summary: Change password
       security:
@@ -640,6 +1049,42 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/auth/alert-settings:
+    patch:
+      tags: [Auth]
+      summary: Update authenticated user alert settings
+      description: Accepts flat snake_case fields or nested `alert_settings` / `alertSettings` payloads.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - $ref: "#/components/schemas/AlertSettingsFields"
+                - $ref: "#/components/schemas/AlertSettingsNestedFields"
+      responses:
+        "200":
+          description: Alert settings updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertSettingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
 
   /api/auth/me:
     get:
@@ -665,8 +1110,15 @@ paths:
       responses:
         "204":
           description: User deleted
+          headers:
+            Set-Cookie:
+              description: Clears the HttpOnly session cookie
+              schema:
+                type: string
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
 
@@ -710,12 +1162,19 @@ paths:
       responses:
         "200":
           description: Session destroyed
+          headers:
+            Set-Cookie:
+              description: Clears the HttpOnly session cookie
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Success"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
 
   /api/sessions:
     delete:
@@ -727,12 +1186,19 @@ paths:
       responses:
         "200":
           description: All sessions destroyed
+          headers:
+            Set-Cookie:
+              description: Clears the HttpOnly session cookie
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Success"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
 
   /api/hives:
     post:
@@ -756,6 +1222,10 @@ paths:
                 notes:
                   type: string
                   nullable: true
+                locationId:
+                  type: integer
+                  format: int64
+                  nullable: true
       responses:
         "201":
           description: Hive created
@@ -767,6 +1237,10 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
     get:
       tags: [Hives]
       summary: List hives
@@ -821,6 +1295,10 @@ paths:
                 notes:
                   type: string
                   nullable: true
+                locationId:
+                  type: integer
+                  format: int64
+                  nullable: true
       responses:
         "200":
           description: Hive updated
@@ -832,6 +1310,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
     delete:
@@ -845,6 +1325,8 @@ paths:
           description: Hive deleted
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
 
@@ -880,8 +1362,12 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
     get:
       tags: [Devices]
       summary: List devices under hive
@@ -945,6 +1431,8 @@ paths:
           description: Device deleted
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
 
@@ -956,6 +1444,18 @@ paths:
       summary: Update device last-seen
       security:
         - sessionCookie: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                seenAt:
+                  type: string
+                  format: date-time
+                  nullable: true
       responses:
         "200":
           description: Device updated
@@ -963,6 +1463,269 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeviceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/locations:
+    get:
+      tags: [Locations]
+      summary: List locations
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/LimitQuery"
+        - $ref: "#/components/parameters/OrderQuery"
+      responses:
+        "200":
+          description: Location list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+    post:
+      tags: [Locations]
+      summary: Create or return an existing location by coordinates
+      description: If a location already exists for the given rounded coordinates, the existing record is returned.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [lat, lon]
+              properties:
+                name:
+                  type: string
+                  nullable: true
+                  maxLength: 120
+                lat:
+                  type: number
+                lon:
+                  type: number
+      responses:
+        "201":
+          description: Location created or existing location returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/locations/{locationId}:
+    parameters:
+      - $ref: "#/components/parameters/LocationIdPath"
+    get:
+      tags: [Locations]
+      summary: Get location by id
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      tags: [Locations]
+      summary: Update location
+      description: Name may be set to null. Latitude and longitude must be provided together when updating coordinates.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  nullable: true
+                  maxLength: 120
+                lat:
+                  type: number
+                lon:
+                  type: number
+      responses:
+        "200":
+          description: Location updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    delete:
+      tags: [Locations]
+      summary: Delete location
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Location deleted
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/external-conditions/latest:
+    get:
+      tags: [External Conditions]
+      summary: Get latest external conditions for a hive
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/HiveIdQueryRequired"
+      responses:
+        "200":
+          description: Latest external condition for the hive's location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalConditionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          description: Hive not found, hive has no location, or no external conditions exist for that hive yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/external-conditions/since:
+    get:
+      tags: [External Conditions]
+      summary: Get external conditions for a hive over a time range
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/HiveIdQueryRequired"
+        - $ref: "#/components/parameters/SinceQueryRequired"
+        - $ref: "#/components/parameters/UntilQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+        - $ref: "#/components/parameters/OrderQuery"
+      responses:
+        "200":
+          description: External conditions in the requested range
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalConditionListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          description: Hive not found or hive has no location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/external-conditions/fetch:
+    post:
+      tags: [External Conditions]
+      summary: Fetch and upsert current external conditions for a hive
+      description: Returns the current 10-minute bucket row. If a row for the current bucket already exists, the existing row is returned without calling the upstream provider again.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/HiveIdQueryRequired"
+      responses:
+        "200":
+          description: External conditions row for the current bucket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalConditionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          description: Hive not found or hive has no location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/alerts:
+    get:
+      tags: [Alerts]
+      summary: List alerts for the authenticated beekeeper
+      description: Returns all alerts for the authenticated beekeeper, optionally filtered by `hiveId`.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: hiveId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: Alert list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/alerts/{alertId}/resolve:
+    parameters:
+      - name: alertId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    patch:
+      tags: [Alerts]
+      summary: Resolve a critical alert
+      description: Only alerts with severity `critical` can be resolved. If the alert is already resolved, the existing alert is returned.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Alert resolved or already resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "404":
@@ -993,17 +1756,15 @@ paths:
                     readings:
                       - id: 100
                         device_id: 12
-                        recorded_at: "2026-02-28T18:00:00.000Z"
-                        temperature_f: 91.2
-                        battery_voltage: 3.71
-                        signal_strength: -87
+                        bucket_at: "2026-02-28T18:00:00.000Z"
+                        received_at: "2026-02-28T18:00:01.000Z"
+                        temperature: 91.2
+                        rssi: -87
                         created_at: "2026-02-28T18:00:01.000Z"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
-        "404":
-          $ref: "#/components/responses/NotFoundError"
 
   /api/readings/latest:
     get:
@@ -1015,22 +1776,23 @@ paths:
         - $ref: "#/components/parameters/HiveIdQueryRequired"
       responses:
         "200":
-          description: Latest reading
+          description: Latest reading for the hive. If the hive exists but has no readings yet, the response still contains a `reading` object with `hive_id` set and the reading fields null.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ReadingListResponse"
+                $ref: "#/components/schemas/LatestReadingResponse"
               examples:
                 example:
                   value:
-                    readings:
-                      - id: 101
-                        device_id: 12
-                        recorded_at: "2026-02-28T18:10:00.000Z"
-                        temperature_f: 91.4
-                        battery_voltage: 3.70
-                        signal_strength: -86
-                        created_at: "2026-02-28T18:10:01.000Z"
+                    reading:
+                      hive_id: 7
+                      id: 101
+                      device_id: 12
+                      bucket_at: "2026-02-28T18:10:00.000Z"
+                      received_at: "2026-02-28T18:10:01.000Z"
+                      temperature: 91.4
+                      rssi: -86
+                      created_at: "2026-02-28T18:10:01.000Z"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
@@ -1038,11 +1800,13 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
-  /api/ingest/readings:
+  /ingest/readings:
     post:
       tags: [Ingest]
       summary: Accept telemetry payload from a device
-      security: []
+      security:
+        - ingestTokenHeader: []
+        - ingestBearer: []
       requestBody:
         required: true
         content:
@@ -1050,29 +1814,30 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [recordedAt, temperatureF]
+              required: [deviceId, temperature, rssi]
               properties:
-                recordedAt:
-                  type: string
-                  format: date-time
-                temperatureF:
+                deviceId:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                temperature:
                   type: number
-                batteryVoltage:
+                rssi:
                   type: number
-                  nullable: true
-                signalStrength:
-                  type: number
-                  nullable: true
       responses:
         "201":
-          description: Reading accepted
+          description: Reading accepted and inserted for the current 10-minute bucket
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Success"
+                $ref: "#/components/schemas/IngestReadingResponse"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "409":
-          $ref: "#/components/responses/ConflictError"
+          description: A reading already exists for this device in the current 10-minute bucket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestReadingConflictResponse"

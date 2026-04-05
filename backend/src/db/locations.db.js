@@ -1,20 +1,9 @@
 "use strict";
-
-/**
- * Locations Repository (PostgreSQL)
- * Table: location
- *
- * Schema notes:
- * - uq_location_lat_lon_e6 UNIQUE (lat_e6, lon_e6)
- * - lat_e6/lon_e6 are generated stored columns from lat/lon
- */
-
 const { query } = require("./pool");
 
-/* ========================================================================== */
-/* Reads                                                                       */
-/* ========================================================================== */
-
+/**
+ * Get a location by its id
+ */
 exports.findById = async ({ locationId }) => {
   const rows = await query(
     `
@@ -29,20 +18,9 @@ exports.findById = async ({ locationId }) => {
   return rows[0] ?? null;
 };
 
-exports.getCoordsById = async ({ locationId }) => {
-  const rows = await query(
-    `
-    SELECT id, lat, lon, lat_e6, lon_e6
-    FROM location
-    WHERE id = $1
-    LIMIT 1
-    `,
-    [locationId],
-  );
-
-  return rows[0] ?? null;
-};
-
+/**
+ * Get a location by its lat/lon E6 coordinates
+ */
 exports.findByLatLonE6 = async ({ latE6, lonE6 }) => {
   const rows = await query(
     `
@@ -58,7 +36,27 @@ exports.findByLatLonE6 = async ({ latE6, lonE6 }) => {
   return rows[0] ?? null;
 };
 
-exports.list = async ({ limit, order }) => {
+/**
+ * Get the coordinates of a location by its id
+ */
+exports.getCoordsById = async ({ locationId }) => {
+  const rows = await query(
+    `
+    SELECT id, lat, lon, lat_e6, lon_e6
+    FROM location
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [locationId],
+  );
+
+  return rows[0] ?? null;
+};
+
+/**
+ * List all stored locations
+ */
+exports.listLocations = async ({ limit, order }) => {
   const orderSql = toOrderSql(order);
   const limitVal = toLimitValue(limit, 1000);
 
@@ -73,22 +71,10 @@ exports.list = async ({ limit, order }) => {
   );
 };
 
-/* ========================================================================== */
-/* Writes                                                                      */
-/* ========================================================================== */
-
 /**
- * Create a location if it doesn't exist; otherwise return the existing row.
- *
- * Important:
- * - The DB uniqueness is on (lat_e6, lon_e6), not raw floats.
- *
- * Inputs:
- * - name (optional)
- * - lat, lon (required)
- * - latE6, lonE6 (required and must match the lat/lon rounding)
+ * Create a location if it doesn't exist, otherwise return the existing row
  */
-exports.createOrGet = async ({ name, lat, lon, latE6, lonE6 }) => {
+exports.createOrGetLocation = async ({ name, lat, lon, latE6, lonE6 }) => {
   try {
     const rows = await query(
       `
@@ -116,9 +102,7 @@ exports.createOrGet = async ({ name, lat, lon, latE6, lonE6 }) => {
 };
 
 /**
- * Patch location fields:
- * - name can be set or cleared (null)
- * - lat/lon can be updated together (service should enforce both provided)
+ * Update a location's data (scoped)
  */
 exports.update = async ({ locationId, name, lat, lon }) => {
   const set = [];
@@ -163,6 +147,9 @@ exports.update = async ({ locationId, name, lat, lon }) => {
   }
 };
 
+/**
+ * Delete a location by its id
+ */
 exports.remove = async ({ locationId }) => {
   const rows = await query(
     `
@@ -176,12 +163,16 @@ exports.remove = async ({ locationId }) => {
   return rows.length > 0;
 };
 
+
+
 /* ========================================================================== */
 /* Helpers                                                                     */
 /* ========================================================================== */
 
 function toOrderSql(order) {
-  const o = String(order ?? "desc").toLowerCase().trim();
+  const o = String(order ?? "desc")
+    .toLowerCase()
+    .trim();
   if (o === "asc") return "ASC";
   if (o === "desc") return "DESC";
   return "DESC";

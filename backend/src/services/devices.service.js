@@ -34,7 +34,7 @@ exports.createDevice = async ({ beekeeperId, hiveId, installedAt }) => {
 
 exports.listDevices = async ({ beekeeperId }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
-  return deviceRepo.listByBeekeeper({ beekeeperId });
+  return deviceRepo.listDevicesByBeekeeper({ beekeeperId });
 };
 
 exports.listDevicesForHive = async ({ beekeeperId, hiveId }) => {
@@ -44,7 +44,7 @@ exports.listDevicesForHive = async ({ beekeeperId, hiveId }) => {
   const hiveExists = await hiveRepo.existsScoped({ beekeeperId, hiveId });
   if (!hiveExists) return null;
 
-  return deviceRepo.listByHiveScoped({ beekeeperId, hiveId });
+  return deviceRepo.listDevicesByHiveScoped({ beekeeperId, hiveId });
 };
 
 exports.getDevice = async ({ beekeeperId, deviceId }) => {

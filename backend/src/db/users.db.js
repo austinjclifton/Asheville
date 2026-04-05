@@ -1,115 +1,90 @@
 "use strict";
-
-/**
- * Users Repository
- * Table: beekeeper
- */
-
 const { query } = require("./pool");
 
-/* ========================================================================== */
-/* Column sets                                                                 */
-/* ========================================================================== */
-
-const BASE_COLUMNS = `
-  id,
-  username,
-  email,
-  phone,
-  created_at,
-  updated_at
-`;
-
-const AUTH_COLUMNS = `
-  ${BASE_COLUMNS},
-  password_hash
-`;
-
-const LOOKUP_COLUMN = Object.freeze({
-  id: "id",
-  email: "email",
-  username: "username",
-});
-
-/* ========================================================================== */
-/* Private helpers                                                             */
-/* ========================================================================== */
-
 /**
- * Find a single beekeeper row by a whitelisted column.
+ * Find a beekeeper by id
  */
-async function findOneBy({ columnKey, value, includeAuth = false }) {
-  const column = LOOKUP_COLUMN[columnKey];
-  if (!column) {
-    throw new Error("Invalid lookup column");
-  }
-
-  const columns = includeAuth ? AUTH_COLUMNS : BASE_COLUMNS;
-
+exports.findById = async ({ id }) => {
   const rows = await query(
     `
-    SELECT ${columns}
+    SELECT
+      id,
+      username,
+      email,
+      phone,
+      created_at,
+      updated_at
     FROM beekeeper
-    WHERE ${column} = $1
+    WHERE id = $1
     LIMIT 1
     `,
-    [value],
+    [id],
   );
 
   return rows[0] ?? null;
-}
-
-/* ========================================================================== */
-/* Reads                                                                       */
-/* ========================================================================== */
-
-/**
- * Lookups (public projection).
- */
-exports.findById = async ({ id }) => {
-  return findOneBy({ columnKey: "id", value: id });
 };
 
+/**
+ * Find a beekeeper by email
+ */
 exports.findByEmail = async ({ email }) => {
-  return findOneBy({ columnKey: "email", value: email });
-};
+  const rows = await query(
+    `
+    SELECT
+      id,
+      username,
+      email,
+      phone,
+      created_at,
+      updated_at
+    FROM beekeeper
+    WHERE email = $1
+    LIMIT 1
+    `,
+    [email],
+  );
 
-exports.findByUsername = async ({ username }) => {
-  return findOneBy({ columnKey: "username", value: username });
+  return rows[0] ?? null;
 };
 
 /**
- * Lookups (auth projection).
+ * Find a beekeeper by username
  */
-exports.findAuthById = async ({ id }) => {
-  return findOneBy({ columnKey: "id", value: id, includeAuth: true });
-};
+exports.findByUsername = async ({ username }) => {
+  const rows = await query(
+    `
+    SELECT
+      id,
+      username,
+      email,
+      phone,
+      created_at,
+      updated_at
+    FROM beekeeper
+    WHERE username = $1
+    LIMIT 1
+    `,
+    [username],
+  );
 
-exports.findAuthByEmail = async ({ email }) => {
-  return findOneBy({ columnKey: "email", value: email, includeAuth: true });
+  return rows[0] ?? null;
 };
-
-exports.findAuthByUsername = async ({ username }) => {
-  return findOneBy({
-    columnKey: "username",
-    value: username,
-    includeAuth: true,
-  });
-};
-
-/* ========================================================================== */
-/* Writes                                                                      */
-/* ========================================================================== */
 
 /**
- * Create a new beekeeper.
+ * Create a new beekeeper record
  */
 exports.create = async ({ username, email, passwordHash }) => {
   const rows = await query(
     `
     INSERT INTO beekeeper (username, email, password_hash)
     VALUES ($1, $2, $3)
-    RETURNING ${BASE_COLUMNS}
+    RETURNING
+      id,
+      username,
+      email,
+      phone,
+      created_at,
+      updated_at
     `,
     [username, email, passwordHash],
   );
@@ -118,8 +93,7 @@ exports.create = async ({ username, email, passwordHash }) => {
 };
 
 /**
- * Update password hash for a beekeeper.
- * Returns true if a row was updated.
+ * Update password hash for a beekeeper
  */
 exports.updatePasswordHash = async ({ id, passwordHash }) => {
   const rows = await query(
@@ -137,10 +111,9 @@ exports.updatePasswordHash = async ({ id, passwordHash }) => {
 };
 
 /**
- * Delete a beekeeper by id.
- * Returns true if a row was deleted.
+ * Delete a beekeeper by its id
  */
-exports.deleteById = async ({ id }) => {
+exports.deleteBeekeeperById = async ({ id }) => {
   const rows = await query(
     `
     DELETE FROM beekeeper
@@ -151,4 +124,48 @@ exports.deleteById = async ({ id }) => {
   );
 
   return rows.length === 1;
+};
+
+/**
+ * Update beekeeper alert settings (thresholds + toggles)
+ */
+exports.updateBeekeeperAlertSettings = async ({
+  beekeeperId,
+  alertsEnabled,
+  warningLow,
+  warningHigh,
+  criticalLow,
+  criticalHigh,
+}) => {
+  const rows = await query(
+    `
+    UPDATE beekeeper
+    SET
+      alerts_enabled = COALESCE($2, alerts_enabled),
+      warning_low_threshold = COALESCE($3, warning_low_threshold),
+      warning_high_threshold = COALESCE($4, warning_high_threshold),
+      critical_low_threshold = COALESCE($5, critical_low_threshold),
+      critical_high_threshold = COALESCE($6, critical_high_threshold),
+      updated_at = now()
+    WHERE id = $1
+    RETURNING
+      id,
+      alerts_enabled,
+      warning_low_threshold,
+      warning_high_threshold,
+      critical_low_threshold,
+      critical_high_threshold,
+      updated_at
+    `,
+    [
+      beekeeperId,
+      alertsEnabled ?? null,
+      warningLow ?? null,
+      warningHigh ?? null,
+      criticalLow ?? null,
+      criticalHigh ?? null,
+    ],
+  );
+
+  return rows[0] ?? null;
 };

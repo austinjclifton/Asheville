@@ -32,7 +32,7 @@ exports.requireCsrf = (req, res, next) => {
     return res.status(403).json({ error: "Invalid CSRF token" });
   }
 
-  // Optional constant-time compare (only safe when lengths match)
+  // Check lengths first so the timing-safe comparison can run safely
   if (
     headerToken.length !== sessionToken.length ||
     !crypto.timingSafeEqual(Buffer.from(headerToken), Buffer.from(sessionToken))

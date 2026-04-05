@@ -1,21 +1,8 @@
 "use strict";
-
-/**
- * Password Reset Repository
- * Table: password_reset_token
- *
- * Responsibilities:
- * - Persist and retrieve reset tokens
- */
-
 const { query } = require("./pool");
 
-/* ========================================================================== */
-/* Writes                                                                      */
-/* ========================================================================== */
-
 /**
- * Create or replace a reset token for a user (1 active token per user).
+ * Create/replace a reset token for a user (1 active token per user)
  */
 exports.createOrReplace = async ({ userId, tokenHash, expiresAt }) => {
   const rows = await query(
@@ -34,12 +21,8 @@ exports.createOrReplace = async ({ userId, tokenHash, expiresAt }) => {
   return rows[0] ?? null;
 };
 
-/* ========================================================================== */
-/* Reads                                                                       */
-/* ========================================================================== */
-
 /**
- * Find a reset token row by token hash.
+ * Find a reset token row by its token hash
  */
 exports.findByTokenHash = async ({ tokenHash }) => {
   const rows = await query(
@@ -55,12 +38,8 @@ exports.findByTokenHash = async ({ tokenHash }) => {
   return rows[0] ?? null;
 };
 
-/* ========================================================================== */
-/* Deletes                                                                     */
-/* ========================================================================== */
-
 /**
- * Delete any reset token for a user.
+ * Delete any reset token for a user
  */
 exports.deleteForUser = async ({ userId }) => {
   const rows = await query(

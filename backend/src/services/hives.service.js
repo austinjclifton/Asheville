@@ -34,7 +34,7 @@ exports.createHive = async ({ beekeeperId, name, notes, locationId }) => {
 
 exports.listHives = async ({ beekeeperId }) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
-  return hiveRepo.listByBeekeeper({ beekeeperId });
+  return hiveRepo.listHivesByBeekeeper({ beekeeperId });
 };
 
 exports.getHive = async ({ beekeeperId, hiveId }) => {
@@ -44,7 +44,13 @@ exports.getHive = async ({ beekeeperId, hiveId }) => {
   return hiveRepo.findByIdScoped({ beekeeperId, hiveId });
 };
 
-exports.updateHive = async ({ beekeeperId, hiveId, name, notes, locationId }) => {
+exports.updateHive = async ({
+  beekeeperId,
+  hiveId,
+  name,
+  notes,
+  locationId,
+}) => {
   assertPositiveInt(beekeeperId, "beekeeperId");
   assertPositiveInt(hiveId, "hiveId");
 
@@ -52,7 +58,11 @@ exports.updateHive = async ({ beekeeperId, hiveId, name, notes, locationId }) =>
   const notesNorm = normalizeNotesForPatch(notes);
   const locationIdNorm = normalizeLocationIdForPatch(locationId);
 
-  if (nameNorm === undefined && notesNorm === undefined && locationIdNorm === undefined) {
+  if (
+    nameNorm === undefined &&
+    notesNorm === undefined &&
+    locationIdNorm === undefined
+  ) {
     throw badRequest("Provide at least one field to update");
   }
 
