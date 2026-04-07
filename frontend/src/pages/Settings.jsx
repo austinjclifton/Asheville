@@ -43,14 +43,14 @@ function ThresholdSlider({ label, value, min, max, onChange, color, alertText })
       <input
         type="range" min={min} max={max} step={0.5} value={parseFloat(value)}
         onChange={e => onChange(e.target.value)}
-        style={{ width: '100%', background: `linear-gradient(to right, ${color} ${pct}%, #e2e8f0 ${pct}%)`, '--slider-color': color }}
+        style={{ width: '100%', background: `linear-gradient(to right, ${color} ${pct}%, #e2e8f0 ${pct}%)`, '--slider-color': color, borderRadius: '0' }}
       />
       {alertText && <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px', lineHeight: 1.5 }}>{alertText}</p>}
     </div>
   );
 }
 
-// ── Toggle Row ────────────────────────────────────────────────────
+// ── Toggle Row — square edges ─────────────────────────────────────
 function ToggleRow({ icon, label, description, checked, onChange, activeColor }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
@@ -61,11 +61,12 @@ function ToggleRow({ icon, label, description, checked, onChange, activeColor })
         <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>{label}</div>
         <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>{description}</div>
       </div>
+      {/* Square toggle — no border-radius */}
       <button
         role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
-        style={{ width: '46px', height: '26px', border: 'none', background: checked ? (activeColor || '#1e2d4a') : '#cbd5e1', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}
+        style={{ width: '46px', height: '26px', border: 'none', background: checked ? (activeColor || '#1e2d4a') : '#cbd5e1', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0, borderRadius: '0' }}
       >
-        <span style={{ position: 'absolute', top: '4px', left: checked ? '24px' : '4px', width: '18px', height: '18px', background: 'white', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+        <span style={{ position: 'absolute', top: '4px', left: checked ? '24px' : '4px', width: '18px', height: '18px', background: 'white', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', borderRadius: '0' }} />
       </button>
     </div>
   );
@@ -189,7 +190,12 @@ export default function Settings() {
   };
 
   const isOnline = deviceLastSeen && (Date.now() - new Date(deviceLastSeen).getTime()) < 30 * 60 * 1000;
-  const sensorId = deviceId ? `HM-${String(deviceId).padStart(4,'0')}-X` : '—';
+
+  // Sensor ID: numbers only (no prefix)
+  const sensorId = deviceId ? String(deviceId) : '—';
+
+  // Firmware: V.<number> format
+  const firmwareVersion = 'V.2.4.1';
 
   const PersonIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
   const BellIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>;
@@ -214,7 +220,14 @@ export default function Settings() {
           <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Settings</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
             HIVE ID: <strong style={{ color: '#1e2d4a' }}>#{hiveInfo?.id ?? '—'}</strong>
-            <span style={{ width: '8px', height: '8px', background: isOnline ? '#22c55e' : '#94a3b8', display: 'inline-block', boxShadow: isOnline ? '0 0 0 3px rgba(34,197,94,0.2)' : 'none' }} />
+            {/* Circle online indicator */}
+            <span style={{
+              width: '10px', height: '10px',
+              background: isOnline ? '#22c55e' : '#94a3b8',
+              display: 'inline-block',
+              borderRadius: '50%',
+              boxShadow: isOnline ? '0 0 0 3px rgba(34,197,94,0.2)' : 'none',
+            }} />
           </div>
         </div>
 
@@ -248,7 +261,7 @@ export default function Settings() {
             </div>
           </SectionCard>
 
-          {/* Notifications */}
+          {/* Notifications — square toggle */}
           <SectionCard icon={<BellIcon />} title="Notifications">
             <ToggleRow
               icon={<MailIcon />}
@@ -268,7 +281,7 @@ export default function Settings() {
             />
           </SectionCard>
 
-          {/* Sensor Thresholds */}
+          {/* Sensor Thresholds — square sliders */}
           <SectionCard icon={<ThermIcon />} title="Sensor Thresholds">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '28px' }}>
               <ThresholdSlider
@@ -316,7 +329,7 @@ export default function Settings() {
             </div>
             <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
               {[
-                { label: 'Firmware Ver.', value: 'v2.4.1-stable' },
+                { label: 'Firmware Ver.', value: firmwareVersion },
                 { label: 'Last Sync', value: deviceLoading ? '—' : timeAgo(deviceLastSeen) },
                 { label: 'Sensor ID', value: deviceLoading ? '—' : sensorId },
               ].map(item => (

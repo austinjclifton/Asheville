@@ -239,8 +239,8 @@ function DashboardChart({ data }) {
       chartRef.current = new Chart(ctx, {
         type: 'line',
         data: { labels: data.labels, datasets: [
-          { label: 'Internal (°F)', data: data.internal, borderColor: '#f5a623', borderWidth: 2.5, backgroundColor: amberGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#f5a623', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, order: 1 },
-          { label: 'External (°F)', data: data.external && data.external.some(v=>v!==null) ? data.external : data.internal.map(()=>null), borderColor: '#1e2d4a', borderWidth: 2, backgroundColor: grayGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#1e2d4a', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, order: 2 },
+          { label: 'Internal (°F)', data: data.internal, borderColor: '#f5a623', borderWidth: 2.5, backgroundColor: amberGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#f5a623', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, spanGaps: false, order: 1 },
+          { label: 'External (°F)', data: data.external && data.external.some(v=>v!==null) ? data.external : data.internal.map(()=>null), borderColor: '#1e2d4a', borderWidth: 2, backgroundColor: grayGrad, fill: true, tension: 0.45, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#1e2d4a', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, spanGaps: false, order: 2 },
         ]},
         options: {
           responsive: true, maintainAspectRatio: false,
@@ -461,7 +461,6 @@ export default function Dashboard() {
           extByTs[ts] = ec.temperature;
         });
 
-        // Always 24H: use HH:mm labels
         const labels = readings.map(r => {
           const d = new Date(r.bucket_at);
           const hh = String(d.getHours()).padStart(2, '0');
@@ -490,6 +489,12 @@ export default function Dashboard() {
       setChartLoading(false);
     }
   }, []);
+
+  const handleManualChartRefresh = () => {
+    if (hiveIdRef.current && !chartLoading) {
+      fetchChartData(hiveIdRef.current, '24H');
+    }
+  };
 
   const handleSetupComplete = (newHive, newDevice) => {
     setHive(newHive); setDevice(newDevice);
@@ -524,6 +529,9 @@ export default function Dashboard() {
       <Navigation />
       {showSetup && <SetupWizard onComplete={handleSetupComplete} />}
 
+      {/* Spin keyframe */}
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+
       <main style={{ flex: 1, overflow: 'auto' }}>
         <div style={{ padding: '24px 28px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Dashboard</h1>
@@ -533,10 +541,12 @@ export default function Dashboard() {
               {loading ? 'Loading…' : hive ? `#${hive.id} · ${hive.name}` : 'No hive'}
             </span>
             {!loading && (
+              /* Circle online indicator */
               <span style={{
-                width: '8px', height: '8px',
+                width: '10px', height: '10px',
                 background: hasRealReadings ? '#22c55e' : '#f59e0b',
                 display: 'inline-block',
+                borderRadius: '50%',
                 boxShadow: `0 0 0 3px ${hasRealReadings ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)'}`,
               }} title={hasRealReadings ? 'Receiving data' : 'No readings yet'} />
             )}
@@ -585,6 +595,30 @@ export default function Dashboard() {
                   </div>
                   <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '3px' }}>Internal vs External Correlation (°F): Last 24 Hours</div>
                 </div>
+                {/* Manual refresh button for dashboard chart */}
+                <button
+                  onClick={handleManualChartRefresh}
+                  disabled={chartLoading}
+                  title="Refresh chart"
+                  style={{
+                    padding: '5px 10px', border: '1px solid #e2e8f0',
+                    background: 'white', color: chartLoading ? '#94a3b8' : '#64748b',
+                    fontSize: '11px', fontWeight: 700, cursor: chartLoading ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => { if (!chartLoading) e.currentTarget.style.background = '#f8fafc'; }}
+                  onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                >
+                  <svg
+                    width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                    style={{ animation: chartLoading ? 'spin 1s linear infinite' : 'none' }}
+                  >
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                  </svg>
+                  Refresh
+                </button>
               </div>
               <div style={{ height: '290px' }}>
                 {chartData ? (

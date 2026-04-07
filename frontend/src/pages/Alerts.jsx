@@ -32,7 +32,8 @@ function deriveAlertsFromReadings(readings, prefs) {
     } else if (tf > optHigh) {
       alerts.push({ id: id++, severity: 'warning', status: 'active', title: 'Temperature Above Warning Range', description: `Temperature at ${tf.toFixed(1)}°F is above the warning high of ${optHigh}°F. Monitor closely.`, time: timeStr, sensor: sensorLabel, temperature: tf });
     } else {
-      alerts.push({ id: id++, severity: 'info', status: 'resolved', title: 'Temperature Within Normal Range', description: `Temperature stable at ${tf.toFixed(1)}°F within warning range (${optLow}–${optHigh}°F).`, time: timeStr, sensor: sensorLabel, temperature: tf });
+      // New readings in normal range default to "info" type — treated as active info notifications
+      alerts.push({ id: id++, severity: 'info', status: 'active', title: 'Temperature Reading Received', description: `Temperature stable at ${tf.toFixed(1)}°F within normal range (${optLow}–${optHigh}°F).`, time: timeStr, sensor: sensorLabel, temperature: tf });
     }
   });
   return alerts;
@@ -84,7 +85,7 @@ export default function Alerts() {
     return () => document.removeEventListener('click', handler);
   }, []);
 
-  const acknowledge = id => setAlerts(a => a.map(x => x.id === id ? { ...x, status: 'acknowledged' } : x));
+  // Removed: acknowledge — only resolve and dismiss remain
   const resolve = id => setAlerts(a => a.map(x => x.id === id ? { ...x, status: 'resolved' } : x));
   const dismiss = id => setAlerts(a => a.filter(x => x.id !== id));
 
@@ -122,7 +123,7 @@ export default function Alerts() {
           <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Activity</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
             HIVE ID: <strong style={{ color: '#1e2d4a' }}>#{hiveInfo?.id ?? '—'}</strong>
-            <span style={{ width: '8px', height: '8px', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
+            <span style={{ width: '8px', height: '8px', background: '#22c55e', display: 'inline-block', borderRadius: '50%', boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
           </div>
         </div>
 
@@ -175,7 +176,6 @@ export default function Alerts() {
             </div>
           ) : filtered.length === 0 ? (
             <div style={{ background: 'white', border: '1px solid #e2e8f0', padding: '60px', textAlign: 'center' }}>
-              {/* <div style={{ fontSize: '28px', marginBottom: '10px' }}>🔕</div> */}
               <div style={{ color: '#64748b', fontSize: '14px', fontWeight: 500 }}>
                 {alerts.length === 0 ? 'No sensor readings found' : 'No events match the current filters'}
               </div>
@@ -187,7 +187,7 @@ export default function Alerts() {
                 const color = SEVERITY_COLORS[alert.severity] || '#94a3b8';
                 const isMenuOpen = openMenuId === alert.id;
                 return (
-                  <div key={alert.id} style={{ background: 'white', borderLeft: `4px solid ${color}`, border: isResolved ? '1px solid #e2e8f0' : `1px solid ${color}`, borderLeft: `4px solid ${color}` }}>
+                  <div key={alert.id} style={{ background: 'white', borderLeft: `4px solid ${color}`, border: isResolved ? '1px solid #e2e8f0' : `1px solid ${color}` }}>
                     <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
                       {/* Left content */}
                       <div style={{ flex: 1 }}>
@@ -219,14 +219,14 @@ export default function Alerts() {
                               Resolved
                             </div>
                           ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: alert.severity === 'critical' ? '#ef4444' : '#f59e0b', fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: alert.severity === 'critical' ? '#ef4444' : alert.severity === 'warning' ? '#f59e0b' : '#3b82f6', fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                               Active
                             </div>
                           )}
                         </div>
 
-                        {/* Three-dot menu */}
+                        {/* Three-dot menu — no Acknowledge option */}
                         <div style={{ position: 'relative' }}>
                           <button
                             onClick={e => { e.stopPropagation(); setOpenMenuId(isMenuOpen ? null : alert.id); }}
@@ -234,12 +234,7 @@ export default function Alerts() {
                           >⋮</button>
                           {isMenuOpen && (
                             <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: '100%', background: 'white', border: '1px solid #e2e8f0', zIndex: 50, minWidth: '130px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                              {!isResolved && alert.status !== 'acknowledged' && (
-                                <button onClick={() => { acknowledge(alert.id); setOpenMenuId(null); }} style={{ display: 'block', width: '100%', padding: '9px 14px', border: 'none', background: 'none', textAlign: 'left', fontSize: '13px', color: '#1e2d4a', cursor: 'pointer', fontWeight: 500 }}
-                                  onMouseEnter={e => e.target.style.background = '#f8fafc'} onMouseLeave={e => e.target.style.background = 'none'}>
-                                  Acknowledge
-                                </button>
-                              )}
+                              {/* Acknowledge removed entirely */}
                               {!isResolved && (
                                 <button onClick={() => { resolve(alert.id); setOpenMenuId(null); }} style={{ display: 'block', width: '100%', padding: '9px 14px', border: 'none', background: 'none', textAlign: 'left', fontSize: '13px', color: '#16a34a', cursor: 'pointer', fontWeight: 500 }}
                                   onMouseEnter={e => e.target.style.background = '#f8fafc'} onMouseLeave={e => e.target.style.background = 'none'}>
