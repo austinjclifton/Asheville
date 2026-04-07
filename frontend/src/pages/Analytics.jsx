@@ -11,33 +11,27 @@ function fmtTime(d) {
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-/**
- * Detect gaps in readings — if consecutive readings are more than `thresholdMs`
- * apart, insert null entries to break the chart line.
- */
-function insertGaps(readings, thresholdMs) {
-  if (!readings || readings.length === 0) return readings;
-  const result = [readings[0]];
-  for (let i = 1; i < readings.length; i++) {
-    const prev = new Date(readings[i-1].bucket_at).getTime();
-    const curr = new Date(readings[i].bucket_at).getTime();
-    if (curr - prev > thresholdMs) {
-      // Insert a null sentinel between the two readings
-      result.push({ __gap: true, bucket_at: new Date((prev + curr) / 2).toISOString() });
-    }
-    result.push(readings[i]);
-  }
-  return result;
-}
-
 function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
   if (!readings || readings.length === 0) return null;
 
-  // Gap threshold: for 24H use 30min, for 7D use 4h, for 30D use 2 days
-  const gapThresholds = { '24H': 30 * 60 * 1000, '7D': 4 * 60 * 60 * 1000, '30D': 48 * 60 * 60 * 1000 };
-  const gapThreshold = gapThresholds[range] || 30 * 60 * 1000;
+  // For 7D/30D: aggregate readings into daily averages
+  let processedReadings = readings;
+  if (range === '7D' || range === '30D') {
+    const dayBuckets = {};
+    readings.forEach(r => {
+      const d = new Date(r.bucket_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      if (!dayBuckets[key]) dayBuckets[key] = { temps: [], rssis: [], bucket_at: r.bucket_at };
+      dayBuckets[key].temps.push(parseFloat(r.temperature));
+      if (r.rssi != null) dayBuckets[key].rssis.push(r.rssi);
+    });
+    processedReadings = Object.entries(dayBuckets).map(([, data]) => ({
+      bucket_at: data.bucket_at,
+      temperature: data.temps.reduce((a, b) => a + b, 0) / data.temps.length,
+      rssi: data.rssis.length ? data.rssis.reduce((a, b) => a + b, 0) / data.rssis.length : null,
+    }));
+  }
 
-  // Build external lookup by 10-min bucket
   const extByTs = {};
   if (externalConditions && externalConditions.length > 0) {
     externalConditions.forEach(ec => {
@@ -46,24 +40,14 @@ function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
     });
   }
 
-  // Insert gap sentinels into raw readings
-  const readingsWithGaps = insertGaps(readings, gapThreshold);
-
-  const labels = readingsWithGaps.map(r => {
-    if (r.__gap) return '';
+  const labels = processedReadings.map(r => {
     const d = new Date(r.bucket_at);
-    if (range === '24H') return fmtTime(d);
-    return fmtDate(d);
+    return range === '24H' ? fmtTime(d) : fmtDate(d);
   });
 
-  // For 7D and 30D: use RAW readings (no averaging), just formatted differently
-  const internalAvg = readingsWithGaps.map(r => {
-    if (r.__gap) return null;
-    return parseFloat(parseFloat(r.temperature).toFixed(1));
-  });
+  const internalAvg = processedReadings.map(r => parseFloat(parseFloat(r.temperature).toFixed(1)));
 
-  const externalAvg = readingsWithGaps.map(r => {
-    if (r.__gap) return null;
+  const externalAvg = processedReadings.map(r => {
     const ts = Math.floor(new Date(r.bucket_at).getTime() / (10 * 60 * 1000));
     for (const offset of [0, 1, -1]) {
       const val = extByTs[ts + offset];
@@ -73,24 +57,20 @@ function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
   });
 
   const tempDiff = internalAvg.map((intT, i) => {
-    if (intT === null) return null;
     const extT = externalAvg[i];
     return extT !== null ? parseFloat((intT - extT).toFixed(1)) : null;
   });
 
-  // Summaries grouped by calendar date — use raw (non-gapped) readings for table
+  // Summaries always grouped by calendar date (MM/DD/YYYY)
   const dayMap = {};
-  readings.forEach(r => {
+  processedReadings.forEach((r, i) => {
     const d = new Date(r.bucket_at);
     const day = fmtDate(d);
     if (!dayMap[day]) dayMap[day] = { temps: [], extTemps: [], rssis: [] };
     dayMap[day].temps.push(parseFloat(r.temperature));
     if (r.rssi != null) dayMap[day].rssis.push(r.rssi);
-    const ts = Math.floor(new Date(r.bucket_at).getTime() / (10 * 60 * 1000));
-    for (const offset of [0, 1, -1]) {
-      const val = extByTs[ts + offset];
-      if (val !== undefined && val !== null) { dayMap[day].extTemps.push(parseFloat(val)); break; }
-    }
+    const extT = externalAvg[i];
+    if (extT !== null) dayMap[day].extTemps.push(extT);
   });
 
   const summaries = Object.entries(dayMap).map(([date, { temps, extTemps, rssis }]) => {
@@ -101,6 +81,7 @@ function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
     const extMin = extTemps.length ? Math.min(...extTemps) : null;
     const extMax = extTemps.length ? Math.max(...extTemps) : null;
     const diffVal = extAvgVal !== null ? intAvgVal - extAvgVal : null;
+    // Normal range in Fahrenheit: 9–45°F above ambient
     const isNormal = diffVal !== null ? (diffVal >= 9 && diffVal <= 45) : true;
     const avgRssi = rssis.length ? Math.round(rssis.reduce((a, b) => a + b, 0) / rssis.length) : null;
     return {
@@ -145,7 +126,7 @@ function AnalyticsChart({ data, view }) {
             },
             {
               type: 'line',
-              label: 'Internal (°F)',
+              label: 'Internal Avg (°F)',
               data: data.internalAvg,
               borderColor: '#f5a623',
               borderWidth: 2.5,
@@ -155,12 +136,11 @@ function AnalyticsChart({ data, view }) {
               pointRadius: 0,
               pointHoverRadius: 4,
               pointHoverBackgroundColor: '#f5a623',
-              spanGaps: false,
               order: 1,
             },
             {
               type: 'line',
-              label: 'External (°F)',
+              label: 'External Avg (°F)',
               data: data.externalAvg,
               borderColor: '#1e2d4a',
               borderWidth: 2,
@@ -171,14 +151,13 @@ function AnalyticsChart({ data, view }) {
               pointRadius: 0,
               pointHoverRadius: 4,
               pointHoverBackgroundColor: '#1e2d4a',
-              spanGaps: false,
               order: 2,
             },
           ]
         : [
             {
               type: 'line',
-              label: 'Internal (°F)',
+              label: 'Internal Avg (°F)',
               data: data.internalAvg,
               borderColor: '#f5a623',
               borderWidth: 2.5,
@@ -186,12 +165,11 @@ function AnalyticsChart({ data, view }) {
               fill: true,
               tension: 0.3,
               pointRadius: 0,
-              spanGaps: false,
               order: 1,
             },
             {
               type: 'line',
-              label: 'External (°F)',
+              label: 'External Avg (°F)',
               data: data.externalAvg,
               borderColor: '#1e2d4a',
               borderWidth: 2,
@@ -199,7 +177,6 @@ function AnalyticsChart({ data, view }) {
               fill: true,
               tension: 0.45,
               pointRadius: 0,
-              spanGaps: false,
               order: 2,
             },
           ];
@@ -280,14 +257,9 @@ function AnalyticsChart({ data, view }) {
   return <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />;
 }
 
-// Range → days, limits, and gap thresholds
 const RANGE_DAYS = { '24H': 1, '7D': 7, '30D': 30 };
-// For 7D and 30D, use higher limits to get raw (non-aggregated) readings
-const RANGE_LIMITS = { '24H': 300, '7D': 5000, '30D': 10000 };
+const RANGE_LIMITS = { '24H': 300, '7D': 1500, '30D': 5000 };
 const FILTER_OPTIONS = ['All', 'Normal', 'Warning'];
-
-// Auto-refresh interval in ms
-const AUTO_REFRESH_INTERVAL = 60 * 1000; // 1 minute
 
 function exportToCSV(summaries, range) {
   const header = 'Date,Int. Avg,Int. Range,Ext. Avg,Ext. Range,Diff,Status,Avg RSSI\n';
@@ -306,6 +278,7 @@ function exportToCSV(summaries, range) {
 export default function Analytics() {
   const { ready: authReady, error: authError } = useAuth();
   const [range, setRange] = useState('24H');
+  // 'ranges' is now the default (first) view
   const [view, setView] = useState('ranges');
   const [chartData, setChartData] = useState(null);
   const [allSummaries, setAllSummaries] = useState([]);
@@ -313,11 +286,8 @@ export default function Analytics() {
   const [visibleCount, setVisibleCount] = useState(5);
   const [toast, setToast] = useState(null);
   const [dataLoading, setDataLoading] = useState(false);
-  const [lastRefreshed, setLastRefreshed] = useState(null);
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 
   const hiveIdRef = useRef(null);
-  const autoRefreshTimerRef = useRef(null);
 
   useEffect(() => {
     if (!authReady || authError) return;
@@ -357,7 +327,6 @@ export default function Analytics() {
       const realData = buildChartDataFromAPI(readings, externalConditions, selectedRange);
       setChartData(realData ?? null);
       setAllSummaries(realData?.summaries ?? []);
-      setLastRefreshed(new Date());
     } catch {
       setChartData(null);
       setAllSummaries([]);
@@ -367,7 +336,6 @@ export default function Analytics() {
     }
   }, []);
 
-  // Range change
   useEffect(() => {
     if (!authReady || authError) return;
     if (hiveIdRef.current) {
@@ -378,23 +346,6 @@ export default function Analytics() {
       setVisibleCount(5);
     }
   }, [range, loadData, authReady, authError]);
-
-  // Auto-refresh setup
-  useEffect(() => {
-    if (autoRefreshTimerRef.current) clearInterval(autoRefreshTimerRef.current);
-    if (autoRefreshEnabled && hiveIdRef.current) {
-      autoRefreshTimerRef.current = setInterval(() => {
-        if (hiveIdRef.current) loadData(range, hiveIdRef.current);
-      }, AUTO_REFRESH_INTERVAL);
-    }
-    return () => { if (autoRefreshTimerRef.current) clearInterval(autoRefreshTimerRef.current); };
-  }, [autoRefreshEnabled, range, loadData]);
-
-  const handleManualRefresh = () => {
-    if (hiveIdRef.current && !dataLoading) {
-      loadData(range, hiveIdRef.current);
-    }
-  };
 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
@@ -416,11 +367,6 @@ export default function Analytics() {
     : allSummaries.filter(r => r.status === currentFilter);
   const visibleSummaries = filteredSummaries.slice(0, visibleCount);
   const hasMore = visibleCount < filteredSummaries.length;
-
-  const fmtLastRefreshed = (d) => {
-    if (!d) return '';
-    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
-  };
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
@@ -444,9 +390,8 @@ export default function Analytics() {
           <div>
             <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Analytics</h1>
             <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-              Raw readings — Range: {range}
-              {dataLoading && ' · Refreshing…'}
-              {lastRefreshed && !dataLoading && ` · Updated ${fmtLastRefreshed(lastRefreshed)}`}
+              Data aggregation: {range === '24H' ? '10 mins' : 'daily avg'} &nbsp;·&nbsp; Range: {range}
+              {dataLoading && ' · Loading…'}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -461,52 +406,6 @@ export default function Analytics() {
                 }}>{r}</button>
               ))}
             </div>
-
-            {/* Manual Refresh Button */}
-            <button
-              onClick={handleManualRefresh}
-              disabled={dataLoading}
-              title="Refresh data"
-              style={{
-                padding: '7px 12px', border: '1.5px solid #e2e8f0',
-                background: 'white', color: dataLoading ? '#94a3b8' : '#1e2d4a',
-                fontSize: '12px', fontWeight: 700, cursor: dataLoading ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', gap: '5px',
-                boxShadow: 'var(--shadow-sm)', transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => { if (!dataLoading) e.currentTarget.style.background = '#f8fafc'; }}
-              onMouseLeave={e => e.currentTarget.style.background = 'white'}
-            >
-              <svg
-                width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                style={{ animation: dataLoading ? 'spin 1s linear infinite' : 'none' }}
-              >
-                <polyline points="23 4 23 10 17 10"/>
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-              </svg>
-              Refresh
-            </button>
-
-            {/* Auto-refresh toggle */}
-            <button
-              onClick={() => setAutoRefreshEnabled(v => !v)}
-              title={autoRefreshEnabled ? 'Auto-refresh ON (1 min) — click to disable' : 'Auto-refresh OFF — click to enable'}
-              style={{
-                padding: '7px 12px', border: '1.5px solid #e2e8f0',
-                background: autoRefreshEnabled ? '#1e2d4a' : 'white',
-                color: autoRefreshEnabled ? 'white' : '#64748b',
-                fontSize: '11px', fontWeight: 700, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '5px',
-                boxShadow: 'var(--shadow-sm)', transition: 'all 0.15s',
-                letterSpacing: '0.03em', textTransform: 'uppercase',
-              }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill={autoRefreshEnabled ? 'white' : 'none'} stroke="currentColor" strokeWidth="2.5">
-                <circle cx="12" cy="12" r="10"/>
-              </svg>
-              Auto
-            </button>
-
             <button
               onClick={handleExport}
               disabled={allSummaries.length === 0}
@@ -535,18 +434,23 @@ export default function Analytics() {
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Beehive Temperature Analytics</div>
                 <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
-                  {range === '24H' ? 'Raw 10-min readings (°F)' : `Raw readings (°F) — ${range} view`}
-                  &nbsp;·&nbsp;
-                  <span style={{ color: '#64748b' }}>Gaps shown where data is missing</span>
+                  {range === '24H' ? 'Hourly readings (°F)' : 'Daily averages (°F)'}
                 </div>
               </div>
+              {/* Ranges first, then comparison */}
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {/* {['ranges', 'comparison'].map(v => (
+                  <button key={v} onClick={() => setView(v)} style={{
+                    padding: '6px 14px', border: 'none',
+                    background: view === v ? '#f1f5f9' : 'transparent',
+                    color: view === v ? '#1e2d4a' : '#94a3b8',
+                    fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+                    textTransform: 'uppercase', letterSpacing: '0.05em',
+                    transition: 'all 0.15s',
+                  }}>{v}</button>
+                ))} */}
+              </div>
             </div>
-
-            {/* Spin keyframe for refresh icon */}
-            <style>{`
-              @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-            `}</style>
-
             <div style={{ height: '340px' }}>
               {dataLoading || !chartData ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: '10px' }}>
