@@ -283,14 +283,6 @@ export default function Settings() {
               onChange={v => setLocalPref('enableEmail', v)}
               activeColor="#1e2d4a"
             />
-            <ToggleRow
-              icon={<PhoneIcon />}
-              label="SMS Critical Alerts"
-              description="Instant text messages for critical temperature drops."
-              checked={localPrefs.enableSMS || false}
-              onChange={v => setLocalPref('enableSMS', v)}
-              activeColor="#f5a623"
-            />
           </SectionCard>
 
           {/* Sensor Thresholds */}
