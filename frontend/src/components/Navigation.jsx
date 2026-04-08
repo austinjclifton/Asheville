@@ -63,8 +63,28 @@ export default function Navigation() {
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(getSavedExpanded);
   const [user, setUser] = useState(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
  
-  // On mount, refresh the CSRF token (handles page refresh) and fetch user info.
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  /* Close drawer on route change */
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
+
+  /* Listen for open event dispatched by page hamburger buttons */
+  useEffect(() => {
+    const handler = () => setMobileOpen(true);
+    window.addEventListener('openMobileNav', handler);
+    return () => window.removeEventListener('openMobileNav', handler);
+  }, []);
+
+  /* On mount, refresh the CSRF token and fetch user info */
   useEffect(() => {
     async function initAuth() {
       try {
@@ -75,7 +95,7 @@ export default function Navigation() {
         setCsrfToken(csrfRes.csrfToken);
         setUser(meRes.user);
       } catch {
-        // Session may have expired — navigation will handle redirects.
+        // Session may have expired
       }
     }
     initAuth();
@@ -100,151 +120,199 @@ export default function Navigation() {
  
   const displayName = user?.username || 'User';
   const initials = getInitials(displayName);
+
+  /* On mobile the sidebar is always fully expanded */
+  const effectiveExpanded = isMobile ? true : isExpanded;
  
   return (
-    <aside style={{
-      width: isExpanded ? '240px' : '72px',
-      minHeight: '100vh',
-      background: '#1e2d4a',
-      display: 'flex',
-      flexDirection: 'column',
-      transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
-      overflow: 'hidden',
-      flexShrink: 0,
-      position: 'sticky',
-      top: 0,
-      height: '100vh',
-    }}>
-      {/* Logo */}
-      <div style={{
-        padding: isExpanded ? '28px 20px 24px' : '28px 16px 24px',
-        display: 'flex', alignItems: 'center', gap: '12px',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
-      }}>
-        <div style={{
-          width: '40px', height: '40px', background: '#f5a623',
-          borderRadius: '10px', display: 'flex', alignItems: 'center',
-          justifyContent: 'center', flexShrink: 0,
-        }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z" fill="white" opacity="0.95"/>
-          </svg>
-        </div>
-        {isExpanded && (
-          <div>
-            <div style={{ color: 'white', fontWeight: 700, fontSize: '18px', lineHeight: 1.2 }}>Asheville</div>
-          </div>
-        )}
-      </div>
- 
-      {/* Nav Items */}
-      <nav style={{ flex: 1, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        {NAV_ITEMS.map((item) => {
-          const isActive = location.pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              to={item.href}
-              title={!isExpanded ? item.label : undefined}
-              style={{
-                display: 'flex', alignItems: 'center',
-                gap: '12px',
-                padding: isExpanded ? '10px 12px' : '10px',
-                borderRadius: '10px',
-                color: isActive ? 'white' : 'rgba(255,255,255,0.55)',
-                background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
-                fontWeight: isActive ? 600 : 400,
-                fontSize: '14px',
-                transition: 'all 0.15s ease',
-                textDecoration: 'none',
-                justifyContent: isExpanded ? 'flex-start' : 'center',
-                position: 'relative',
-              }}
-              onMouseEnter={e => {
-                if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = 'rgba(255,255,255,0.85)'; }
-              }}
-              onMouseLeave={e => {
-                if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; }
-              }}
-            >
-              {isActive && (
-                <span style={{
-                  position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                  width: '3px', height: '20px', background: '#f5a623', borderRadius: '0 3px 3px 0',
-                }} />
-              )}
-              <span style={{ color: isActive ? '#f5a623' : 'inherit', flexShrink: 0 }}>{item.icon}</span>
-              {isExpanded && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
-      </nav>
- 
-      {/* Bottom: toggle + user */}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '12px 10px' }}>
-        {/* Toggle */}
-        <button
-          onClick={handleToggle}
-          title={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+    <>
+      {/* Mobile backdrop */}
+      {isMobile && mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
           style={{
-            width: '100%', display: 'flex', alignItems: 'center',
-            justifyContent: isExpanded ? 'flex-end' : 'center',
-            padding: '8px 12px', background: 'transparent', border: 'none',
-            color: 'rgba(255,255,255,0.4)', cursor: 'pointer', borderRadius: '8px', marginBottom: '8px',
-            transition: 'color 0.15s',
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.55)',
+            zIndex: 299,
           }}
-          onMouseEnter={e => e.currentTarget.style.color = 'rgba(255,255,255,0.8)'}
-          onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            {isExpanded
-              ? <polyline points="15 18 9 12 15 6" />
-              : <polyline points="9 18 15 12 9 6" />
-            }
-          </svg>
-        </button>
- 
-        {/* User row */}
+        />
+      )}
+
+      <aside style={{
+        width: isMobile ? '240px' : (isExpanded ? '240px' : '72px'),
+        minHeight: '100vh',
+        background: '#1e2d4a',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: isMobile
+          ? 'left 0.25s cubic-bezier(0.4,0,0.2,1)'
+          : 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
+        overflow: 'hidden',
+        flexShrink: 0,
+        position: isMobile ? 'fixed' : 'sticky',
+        top: 0,
+        left: isMobile ? (mobileOpen ? '0' : '-260px') : 'auto',
+        zIndex: isMobile ? 300 : 'auto',
+        height: '100vh',
+      }}>
+        {/* Logo + mobile close button */}
         <div style={{
-          display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '10px',
-          justifyContent: isExpanded ? 'space-between' : 'center',
+          padding: effectiveExpanded ? '28px 20px 24px' : '28px 16px 24px',
+          display: 'flex', alignItems: 'center', gap: '12px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          justifyContent: 'space-between',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
-              width: '32px', height: '32px', borderRadius: '50%', background: '#f5a623',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontWeight: 700, fontSize: '13px', flexShrink: 0,
+              width: '40px', height: '40px', background: '#f5a623',
+              borderRadius: '10px', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', flexShrink: 0,
             }}>
-              {initials}
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z" fill="white" opacity="0.95"/>
+              </svg>
             </div>
-            {isExpanded && (
+            {effectiveExpanded && (
               <div>
-                <div style={{ color: 'white', fontWeight: 600, fontSize: '13px' }}>{displayName}</div>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>{user?.email || 'Beekeeper'}</div>
+                <div style={{ color: 'white', fontWeight: 700, fontSize: '18px', lineHeight: 1.2 }}>Asheville</div>
               </div>
             )}
           </div>
-          {isExpanded && (
+          {/* Close button — mobile only */}
+          {isMobile && (
             <button
-              onClick={handleLogout}
-              title="Sign out"
+              onClick={() => setMobileOpen(false)}
               style={{
-                background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)',
-                cursor: 'pointer', padding: '4px', borderRadius: '6px', display: 'flex', alignItems: 'center',
-                transition: 'color 0.15s',
+                background: 'transparent',
+                border: 'none',
+                color: 'rgba(255,255,255,0.6)',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
-              onMouseEnter={e => e.currentTarget.style.color = 'rgba(255,255,255,0.85)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="12" x2="9" y2="12"/>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
             </button>
           )}
         </div>
-      </div>
-    </aside>
+ 
+        {/* Nav Items */}
+        <nav style={{ flex: 1, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          {NAV_ITEMS.map((item) => {
+            const isActive = location.pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                to={item.href}
+                title={!effectiveExpanded ? item.label : undefined}
+                style={{
+                  display: 'flex', alignItems: 'center',
+                  gap: '12px',
+                  padding: effectiveExpanded ? '10px 12px' : '10px',
+                  borderRadius: '10px',
+                  color: isActive ? 'white' : 'rgba(255,255,255,0.55)',
+                  background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
+                  fontWeight: isActive ? 600 : 400,
+                  fontSize: '14px',
+                  transition: 'all 0.15s ease',
+                  textDecoration: 'none',
+                  justifyContent: effectiveExpanded ? 'flex-start' : 'center',
+                  position: 'relative',
+                }}
+                onMouseEnter={e => {
+                  if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = 'rgba(255,255,255,0.85)'; }
+                }}
+                onMouseLeave={e => {
+                  if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; }
+                }}
+              >
+                {isActive && (
+                  <span style={{
+                    position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
+                    width: '3px', height: '20px', background: '#f5a623', borderRadius: '0 3px 3px 0',
+                  }} />
+                )}
+                <span style={{ color: isActive ? '#f5a623' : 'inherit', flexShrink: 0 }}>{item.icon}</span>
+                {effectiveExpanded && <span>{item.label}</span>}
+              </Link>
+            );
+          })}
+        </nav>
+ 
+        {/* Bottom: expand toggle (desktop only) + user row */}
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '12px 10px' }}>
+          {/* Toggle — hidden on mobile */}
+          {!isMobile && (
+            <button
+              onClick={handleToggle}
+              title={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center',
+                justifyContent: isExpanded ? 'flex-end' : 'center',
+                padding: '8px 12px', background: 'transparent', border: 'none',
+                color: 'rgba(255,255,255,0.4)', cursor: 'pointer', borderRadius: '8px', marginBottom: '8px',
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = 'rgba(255,255,255,0.8)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                {isExpanded
+                  ? <polyline points="15 18 9 12 15 6" />
+                  : <polyline points="9 18 15 12 9 6" />
+                }
+              </svg>
+            </button>
+          )}
+ 
+          {/* User row */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '10px',
+            justifyContent: effectiveExpanded ? 'space-between' : 'center',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '32px', height: '32px', borderRadius: '50%', background: '#f5a623',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'white', fontWeight: 700, fontSize: '13px', flexShrink: 0,
+              }}>
+                {initials}
+              </div>
+              {effectiveExpanded && (
+                <div>
+                  <div style={{ color: 'white', fontWeight: 600, fontSize: '13px' }}>{displayName}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>{user?.email || 'Beekeeper'}</div>
+                </div>
+              )}
+            </div>
+            {effectiveExpanded && (
+              <button
+                onClick={handleLogout}
+                title="Sign out"
+                style={{
+                  background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)',
+                  cursor: 'pointer', padding: '4px', borderRadius: '6px', display: 'flex', alignItems: 'center',
+                  transition: 'color 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = 'rgba(255,255,255,0.85)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      </aside>
+    </>
   );
 }

@@ -31,7 +31,23 @@ function timeAgo(dateStr) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-// ── Threshold Slider ──────────────────────────────────────────────
+/* Hamburger trigger */
+function HamburgerBtn() {
+  return (
+    <button
+      className="mobile-menu-btn"
+      onClick={() => window.dispatchEvent(new Event('openMobileNav'))}
+    >
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+  );
+}
+
+/* ── Threshold Slider ─────────────────────────────────────────── */
 function ThresholdSlider({ label, value, min, max, onChange, color, alertText }) {
   const pct = Math.max(0, Math.min(100, ((parseFloat(value) - min) / (max - min)) * 100));
   return (
@@ -50,18 +66,17 @@ function ThresholdSlider({ label, value, min, max, onChange, color, alertText })
   );
 }
 
-// ── Toggle Row — square edges ─────────────────────────────────────
+/* ── Toggle Row ───────────────────────────────────────────────── */
 function ToggleRow({ icon, label, description, checked, onChange, activeColor }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
       <div style={{ width: '36px', height: '36px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#94a3b8' }}>
         {icon}
       </div>
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>{label}</div>
         <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>{description}</div>
       </div>
-      {/* Square toggle — no border-radius */}
       <button
         role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
         style={{ width: '46px', height: '26px', border: 'none', background: checked ? (activeColor || '#1e2d4a') : '#cbd5e1', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0, borderRadius: '0' }}
@@ -72,7 +87,7 @@ function ToggleRow({ icon, label, description, checked, onChange, activeColor })
   );
 }
 
-// ── Section Card ──────────────────────────────────────────────────
+/* ── Section Card ─────────────────────────────────────────────── */
 function SectionCard({ icon, title, children }) {
   return (
     <div style={{ background: 'white', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
@@ -80,12 +95,12 @@ function SectionCard({ icon, title, children }) {
         <span style={{ color: '#f5a623' }}>{icon}</span>
         <span style={{ fontSize: '12px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{title}</span>
       </div>
-      <div style={{ padding: '24px' }}>{children}</div>
+      <div style={{ padding: '20px 24px' }}>{children}</div>
     </div>
   );
 }
 
-// ── Field Input ───────────────────────────────────────────────────
+/* ── Field Input ──────────────────────────────────────────────── */
 function Field({ label, value, onChange, type = 'text', disabled }) {
   return (
     <div>
@@ -101,7 +116,7 @@ function Field({ label, value, onChange, type = 'text', disabled }) {
   );
 }
 
-// ── Change Password Modal ─────────────────────────────────────────
+/* ── Change Password Modal ────────────────────────────────────── */
 function ChangePasswordModal({ onClose, onSuccess }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -118,7 +133,7 @@ function ChangePasswordModal({ onClose, onSuccess }) {
     finally { setLoading(false); }
   };
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ background: 'white', padding: '32px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a' }}>Change Password</span>
@@ -139,11 +154,10 @@ function ChangePasswordModal({ onClose, onSuccess }) {
   );
 }
 
-// ── Main Settings ─────────────────────────────────────────────────
+/* ── Main Settings ────────────────────────────────────────────── */
 export default function Settings() {
   const { ready: authReady, error: authError } = useAuth();
   const [localPrefs, setLocalPrefs] = useState(loadLocalPrefs);
-  const [savedPrefs, setSavedPrefs] = useState(loadLocalPrefs);
   const [displayName, setDisplayName] = useState('');
   const [accountEmail, setAccountEmail] = useState('');
   const [saving, setSaving] = useState(false);
@@ -185,16 +199,12 @@ export default function Settings() {
     if (ol >= oh) { showToast('Warning low must be less than warning high.', false); setSaving(false); return; }
     if (ol < cl || oh > ch) { showToast('Warning range must be within critical range.', false); setSaving(false); return; }
     const toSave = { ...localPrefs, tempUnit: 'fahrenheit' };
-    saveLocalPrefs(toSave); setSavedPrefs(toSave); setLocalPrefs(toSave);
+    saveLocalPrefs(toSave); setLocalPrefs(toSave);
     showToast('Settings saved successfully'); setSaving(false);
   };
 
   const isOnline = deviceLastSeen && (Date.now() - new Date(deviceLastSeen).getTime()) < 30 * 60 * 1000;
-
-  // Sensor ID: numbers only (no prefix)
   const sensorId = deviceId ? String(deviceId) : '—';
-
-  // Firmware: V.<number> format
   const firmwareVersion = 'V.2.4.1';
 
   const PersonIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
@@ -214,14 +224,16 @@ export default function Settings() {
         </div>
       )}
 
-      <main style={{ flex: 1, overflow: 'auto' }}>
+      <main style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
         {/* Top bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', borderBottom: '1px solid #e2e8f0', background: 'white' }}>
-          <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Settings</span>
+        <div className="mob-topbar-pad" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', borderBottom: '1px solid #e2e8f0', background: 'white' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <HamburgerBtn />
+            <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Settings</span>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
-            HIVE ID: <strong style={{ color: '#1e2d4a' }}>#{hiveInfo?.id ?? '—'}</strong>
-            {/* Circle online indicator */}
-            <span style={{
+            <span>#{hiveInfo?.id ?? '—'}</span>
+            <span className="status-dot" style={{
               width: '10px', height: '10px',
               background: isOnline ? '#22c55e' : '#94a3b8',
               display: 'inline-block',
@@ -231,14 +243,14 @@ export default function Settings() {
           </div>
         </div>
 
-        <div style={{ padding: '28px 32px' }}>
+        <div className="mob-pad" style={{ padding: '28px 32px' }}>
           {/* Config header */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', gap: '12px' }}>
             <div>
               <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.01em' }}>Configuration</h1>
               <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Manage Preferences &amp; Alerts</div>
             </div>
-            <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: saving ? '#94a3b8' : '#1e2d4a', color: 'white', border: 'none', fontSize: '13px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: saving ? '#94a3b8' : '#1e2d4a', color: 'white', border: 'none', fontSize: '12px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase', flexShrink: 0 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
@@ -246,11 +258,11 @@ export default function Settings() {
 
           {/* Operator Profile */}
           <SectionCard icon={<PersonIcon />} title="Operator Profile">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div className="settings-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
               <Field label="Full Name" value={displayName} disabled />
               <Field label="Role" value={localPrefs.role || 'Beekeeper'} onChange={v => setLocalPref('role', v)} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="settings-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <Field label="Email Address" value={accountEmail} disabled />
               <Field label="Phone Number" value={localPrefs.phoneNum || ''} onChange={v => setLocalPref('phoneNum', v)} />
             </div>
@@ -261,7 +273,7 @@ export default function Settings() {
             </div>
           </SectionCard>
 
-          {/* Notifications — square toggle */}
+          {/* Notifications */}
           <SectionCard icon={<BellIcon />} title="Notifications">
             <ToggleRow
               icon={<MailIcon />}
@@ -281,9 +293,9 @@ export default function Settings() {
             />
           </SectionCard>
 
-          {/* Sensor Thresholds — square sliders */}
+          {/* Sensor Thresholds */}
           <SectionCard icon={<ThermIcon />} title="Sensor Thresholds">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '28px' }}>
+            <div className="threshold-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '28px' }}>
               <ThresholdSlider
                 label="Min Internal Temp"
                 value={localPrefs.criticalLow}
@@ -301,7 +313,7 @@ export default function Settings() {
                 alertText="Alert triggers when core temperature exceeds this value."
               />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
+            <div className="threshold-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
               <ThresholdSlider
                 label="Warning Range Low"
                 value={localPrefs.optimalLow}
@@ -327,7 +339,7 @@ export default function Settings() {
               <span style={{ color: '#94a3b8' }}><ShieldIcon /></span>
               <span style={{ fontSize: '12px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>System Information</span>
             </div>
-            <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
+            <div className="settings-sysinfo-grid" style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
               {[
                 { label: 'Firmware Ver.', value: firmwareVersion },
                 { label: 'Last Sync', value: deviceLoading ? '—' : timeAgo(deviceLastSeen) },

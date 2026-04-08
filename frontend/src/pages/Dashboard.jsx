@@ -7,7 +7,23 @@ import { useAuth } from '../hooks/useAuth';
 const RANGE_HOURS = { '24H': 24 };
 const RANGE_LIMITS = { '24H': 200 };
 
-// ── Setup Wizard ──────────────────────────────────────────────────────────────
+/* ── Hamburger helper ──────────────────────────────────────────── */
+function HamburgerBtn() {
+  return (
+    <button
+      className="mobile-menu-btn"
+      onClick={() => window.dispatchEvent(new Event('openMobileNav'))}
+    >
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+  );
+}
+
+/* ── Setup Wizard ──────────────────────────────────────────────── */
 
 function CopyButton({ text, label }) {
   const [copied, setCopied] = useState(false);
@@ -187,7 +203,7 @@ function SetupWizard({ onComplete }) {
   );
 }
 
-// ── No-readings banner ────────────────────────────────────────────────────────
+/* ── No-readings banner ──────────────────────────────────────────── */
 
 function NoReadingsBanner({ deviceId }) {
   const ingestUrl = `${window.location.origin}/ingest/readings`;
@@ -197,7 +213,7 @@ function NoReadingsBanner({ deviceId }) {
   -d '{"deviceId":"${deviceId}","temperature":"95.2","rssi":"-70"}'`;
 
   return (
-    <div style={{ margin: '0 28px 16px', background: '#fffbeb', border: '1px solid #fde68a', padding: '16px 20px' }}>
+    <div style={{ margin: '0 16px 16px', background: '#fffbeb', border: '1px solid #fde68a', padding: '16px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
@@ -220,7 +236,7 @@ function NoReadingsBanner({ deviceId }) {
   );
 }
 
-// ── Chart ─────────────────────────────────────────────────────────────────────
+/* ── Chart ──────────────────────────────────────────────────────── */
 
 function DashboardChart({ data }) {
   const canvasRef = useRef(null);
@@ -268,7 +284,7 @@ function DashboardChart({ data }) {
   return <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />;
 }
 
-// ── Temp Card ─────────────────────────────────────────────────────────────────
+/* ── Temp Card ──────────────────────────────────────────────────── */
 
 function TempCard({ title, value, unit, delta, sensor, accentColor, Icon }) {
   const isNeg = delta < 0;
@@ -276,25 +292,25 @@ function TempCard({ title, value, unit, delta, sensor, accentColor, Icon }) {
   const hasValue = value !== null && value !== undefined && value !== '…';
 
   return (
-    <div style={{ background: 'white', overflow: 'hidden', flex: 1, boxShadow: 'var(--shadow-sm)' }}>
+    <div style={{ background: 'white', overflow: 'hidden', flex: 1, boxShadow: 'var(--shadow-sm)', minWidth: 0 }}>
       <div style={{ height: '3px', background: accentColor }} />
-      <div style={{ padding: '18px 22px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+      <div style={{ padding: '14px 16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
             <span style={{ color: accentColor, display: 'flex', alignItems: 'center' }}><Icon /></span>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.07em', textTransform: 'uppercase' }}>{title}</span>
+            <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', letterSpacing: '0.07em', textTransform: 'uppercase' }}>{title}</span>
           </div>
           {hasValue && !isZero && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: isNeg ? '#ef4444' : '#22c55e', background: isNeg ? '#fef2f2' : '#f0fdf4', padding: '3px 9px', lineHeight: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 700, color: isNeg ? '#ef4444' : '#22c55e', background: isNeg ? '#fef2f2' : '#f0fdf4', padding: '2px 7px', lineHeight: 1 }}>
               {isNeg ? '▼' : '▲'} {Math.abs(delta).toFixed(1)}°F
             </div>
           )}
         </div>
 
         {hasValue ? (
-          <div style={{ fontSize: '42px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.03em', lineHeight: 1, display: 'flex', alignItems: 'baseline', gap: '3px' }}>
+          <div className="temp-card-value" style={{ fontSize: '38px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.03em', lineHeight: 1, display: 'flex', alignItems: 'baseline', gap: '3px' }}>
             {value}
-            <span style={{ fontSize: '18px', fontWeight: 500, color: '#64748b' }}>{unit || '°F'}</span>
+            <span style={{ fontSize: '16px', fontWeight: 500, color: '#64748b' }}>{unit || '°F'}</span>
           </div>
         ) : (
           <div style={{ paddingTop: '4px', paddingBottom: '4px' }}>
@@ -303,7 +319,7 @@ function TempCard({ title, value, unit, delta, sensor, accentColor, Icon }) {
           </div>
         )}
 
-        <div style={{ marginTop: '10px', fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>{sensor}</div>
+        <div style={{ marginTop: '8px', fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>{sensor}</div>
       </div>
     </div>
   );
@@ -312,7 +328,7 @@ function TempCard({ title, value, unit, delta, sensor, accentColor, Icon }) {
 const ThermIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>;
 const WindIcon  = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>;
 
-// ── System Events from API readings ──────────────────────────────────────────
+/* ── System Events ──────────────────────────────────────────────── */
 
 function SystemEventList({ hiveId }) {
   const [events, setEvents] = useState([]);
@@ -382,7 +398,7 @@ function SystemEventList({ hiveId }) {
   );
 }
 
-// ── Dashboard ─────────────────────────────────────────────────────────────────
+/* ── Dashboard ──────────────────────────────────────────────────── */
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -529,20 +545,22 @@ export default function Dashboard() {
       <Navigation />
       {showSetup && <SetupWizard onComplete={handleSetupComplete} />}
 
-      {/* Spin keyframe */}
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
-      <main style={{ flex: 1, overflow: 'auto' }}>
-        <div style={{ padding: '24px 28px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Dashboard</h1>
+      <main style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
+        {/* ── Page header ── */}
+        <div className="mob-pad-top" style={{ padding: '24px 28px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <HamburgerBtn />
+            <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Dashboard</h1>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500 }}>HIVE:</span>
             <span style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a' }}>
-              {loading ? 'Loading…' : hive ? `#${hive.id} · ${hive.name}` : 'No hive'}
+              {loading ? 'Loading…' : hive ? `#${hive.id}` : 'No hive'}
             </span>
             {!loading && (
-              /* Circle online indicator */
-              <span style={{
+              <span className="status-dot" style={{
                 width: '10px', height: '10px',
                 background: hasRealReadings ? '#22c55e' : '#f59e0b',
                 display: 'inline-block',
@@ -557,14 +575,15 @@ export default function Dashboard() {
           device
             ? <NoReadingsBanner deviceId={device.id} />
             : (
-              <div style={{ margin: '0 28px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px 20px', fontSize: '13px', color: '#1d4ed8', fontWeight: 500 }}>
-                No device is registered to this hive yet. Use the setup flow to register a sensor, then send readings to see data here.
+              <div style={{ margin: '0 16px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px 20px', fontSize: '13px', color: '#1d4ed8', fontWeight: 500 }}>
+                No device is registered to this hive yet.
               </div>
             )
         )}
 
-        <div style={{ padding: '0 28px 28px' }}>
-          <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
+        <div className="mob-pad" style={{ padding: '0 28px 28px' }}>
+          {/* ── Temp cards ── */}
+          <div className="dashboard-temp-row" style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
             <TempCard
               title="Internal Temperature"
               value={loading ? '…' : latestF}
@@ -585,7 +604,9 @@ export default function Dashboard() {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '16px', alignItems: 'start' }}>
+          {/* ── Main grid ── */}
+          <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '16px', alignItems: 'start' }}>
+            {/* Chart */}
             <div style={{ background: 'white', padding: '22px 22px 14px', boxShadow: 'var(--shadow-sm)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                 <div>
@@ -593,9 +614,8 @@ export default function Dashboard() {
                     Temperature Analysis
                     {chartLoading && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#94a3b8', fontWeight: 500, textTransform: 'none' }}>Loading…</span>}
                   </div>
-                  <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '3px' }}>Internal vs External Correlation (°F): Last 24 Hours</div>
+                  <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '3px' }}>Internal vs External (°F): Last 24 Hours</div>
                 </div>
-                {/* Manual refresh button for dashboard chart */}
                 <button
                   onClick={handleManualChartRefresh}
                   disabled={chartLoading}
@@ -620,7 +640,7 @@ export default function Dashboard() {
                   Refresh
                 </button>
               </div>
-              <div style={{ height: '290px' }}>
+              <div className="dashboard-chart-wrap" style={{ height: '290px' }}>
                 {chartData ? (
                   <DashboardChart data={chartData} />
                 ) : (
@@ -634,6 +654,7 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* System Events */}
             <div style={{ background: 'white', padding: '22px', boxShadow: 'var(--shadow-sm)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>System Events</div>

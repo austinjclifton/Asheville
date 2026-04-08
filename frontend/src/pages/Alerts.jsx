@@ -32,7 +32,6 @@ function deriveAlertsFromReadings(readings, prefs) {
     } else if (tf > optHigh) {
       alerts.push({ id: id++, severity: 'warning', status: 'active', title: 'Temperature Above Warning Range', description: `Temperature at ${tf.toFixed(1)}°F is above the warning high of ${optHigh}°F. Monitor closely.`, time: timeStr, sensor: sensorLabel, temperature: tf });
     } else {
-      // New readings in normal range default to "info" type — treated as active info notifications
       alerts.push({ id: id++, severity: 'info', status: 'active', title: 'Temperature Reading Received', description: `Temperature stable at ${tf.toFixed(1)}°F within normal range (${optLow}–${optHigh}°F).`, time: timeStr, sensor: sensorLabel, temperature: tf });
     }
   });
@@ -45,6 +44,22 @@ function loadPrefs() {
 }
 
 const SEVERITY_COLORS = { critical: '#ef4444', warning: '#f59e0b', info: '#3b82f6' };
+
+/* Hamburger trigger */
+function HamburgerBtn() {
+  return (
+    <button
+      className="mobile-menu-btn"
+      onClick={() => window.dispatchEvent(new Event('openMobileNav'))}
+    >
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+  );
+}
 
 export default function Alerts() {
   const { ready: authReady, error: authError } = useAuth();
@@ -78,14 +93,12 @@ export default function Alerts() {
     fetchAlerts();
   }, [authReady, authError]);
 
-  // Close menu on outside click
   useEffect(() => {
     const handler = () => setOpenMenuId(null);
     document.addEventListener('click', handler);
     return () => document.removeEventListener('click', handler);
   }, []);
 
-  // Removed: acknowledge — only resolve and dismiss remain
   const resolve = id => setAlerts(a => a.map(x => x.id === id ? { ...x, status: 'resolved' } : x));
   const dismiss = id => setAlerts(a => a.filter(x => x.id !== id));
 
@@ -108,7 +121,7 @@ export default function Alerts() {
   };
 
   const FBtn = ({ label, active, onClick }) => (
-    <button onClick={onClick} style={{ padding: '5px 14px', border: '1px solid #e2e8f0', background: active ? '#1e2d4a' : 'white', color: active ? 'white' : '#64748b', fontSize: '12px', fontWeight: 700, cursor: 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+    <button onClick={onClick} style={{ padding: '5px 12px', border: '1px solid #e2e8f0', background: active ? '#1e2d4a' : 'white', color: active ? 'white' : '#64748b', fontSize: '11px', fontWeight: 700, cursor: 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
       {label}
     </button>
   );
@@ -116,40 +129,43 @@ export default function Alerts() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f0f2f5' }}>
       <Navigation />
-      <main style={{ flex: 1, overflow: 'auto' }} onClick={() => setOpenMenuId(null)}>
+      <main style={{ flex: 1, overflow: 'auto', minWidth: 0 }} onClick={() => setOpenMenuId(null)}>
 
         {/* Top bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', borderBottom: '1px solid #e2e8f0', background: 'white' }}>
-          <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Activity</span>
+        <div className="mob-topbar-pad" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', borderBottom: '1px solid #e2e8f0', background: 'white' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <HamburgerBtn />
+            <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Activity</span>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
-            HIVE ID: <strong style={{ color: '#1e2d4a' }}>#{hiveInfo?.id ?? '—'}</strong>
-            <span style={{ width: '8px', height: '8px', background: '#22c55e', display: 'inline-block', borderRadius: '50%', boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
+            <span>#{hiveInfo?.id ?? '—'}</span>
+            <span className="status-dot" style={{ width: '8px', height: '8px', background: '#22c55e', display: 'inline-block', borderRadius: '50%', boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
           </div>
         </div>
 
-        <div style={{ padding: '28px 32px' }}>
+        <div className="mob-pad" style={{ padding: '28px 32px' }}>
           {/* Title row */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', gap: '12px' }}>
             <div>
               <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.01em' }}>System Activity</h1>
               <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Real-Time Monitoring Logs &amp; Alerts</div>
             </div>
-            <button onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 18px', border: '1px solid #e2e8f0', background: 'white', fontSize: '12px', fontWeight: 700, color: '#1e2d4a', cursor: 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase', boxShadow: 'var(--shadow-sm)' }}>
+            <button onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 14px', border: '1px solid #e2e8f0', background: 'white', fontSize: '12px', fontWeight: 700, color: '#1e2d4a', cursor: 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase', boxShadow: 'var(--shadow-sm)', flexShrink: 0 }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Export Log
+              Export
             </button>
           </div>
 
-          {/* Filter / Search bar */}
+          {/* Filter + Search */}
           <div style={{ background: 'white', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
-            <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Severity:</span>
+            <div className="filter-pills-row" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap' }}>Severity:</span>
               <FBtn label="All" active={severityFilter === 'all'} onClick={() => setSeverityFilter('all')} />
               <FBtn label="Critical" active={severityFilter === 'critical'} onClick={() => setSeverityFilter('critical')} />
               <FBtn label="Warning" active={severityFilter === 'warning'} onClick={() => setSeverityFilter('warning')} />
               <FBtn label="Info" active={severityFilter === 'info'} onClick={() => setSeverityFilter('info')} />
-              <div style={{ width: '1px', height: '20px', background: '#e2e8f0', margin: '0 4px' }} />
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Status:</span>
+              <div style={{ width: '1px', height: '20px', background: '#e2e8f0', margin: '0 2px' }} />
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap' }}>Status:</span>
               <FBtn label="All" active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
               <FBtn label="Active" active={statusFilter === 'active'} onClick={() => setStatusFilter('active')} />
               <FBtn label="Resolved" active={statusFilter === 'resolved'} onClick={() => setStatusFilter('resolved')} />
@@ -188,45 +204,39 @@ export default function Alerts() {
                 const isMenuOpen = openMenuId === alert.id;
                 return (
                   <div key={alert.id} style={{ background: 'white', borderLeft: `4px solid ${color}`, border: isResolved ? '1px solid #e2e8f0' : `1px solid ${color}` }}>
-                    <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
-                      {/* Left content */}
-                      <div style={{ flex: 1 }}>
-                        {/* Meta row */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                    <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.08em', background: isResolved ? '#f1f5f9' : `${color}18`, color: isResolved ? '#94a3b8' : color, padding: '2px 8px', border: `1px solid ${isResolved ? '#e2e8f0' : color}`, textTransform: 'uppercase' }}>
                             {alert.severity}
                           </span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#94a3b8' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#94a3b8' }}>
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                             {alert.time}
                           </span>
-                          <span style={{ width: '1px', height: '12px', background: '#e2e8f0' }} />
-                          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>{alert.sensor}</span>
+                          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>{alert.sensor}</span>
                         </div>
-                        {/* Message */}
-                        <div style={{ fontSize: '14px', color: isResolved ? '#94a3b8' : '#1e2d4a', textDecoration: isResolved ? 'line-through' : 'none', fontStyle: isResolved ? 'italic' : 'normal', lineHeight: 1.5 }}>
+                        <div style={{ fontSize: '13px', color: isResolved ? '#94a3b8' : '#1e2d4a', textDecoration: isResolved ? 'line-through' : 'none', fontStyle: isResolved ? 'italic' : 'normal', lineHeight: 1.5 }}>
                           {alert.description}
                         </div>
                       </div>
 
-                      {/* Right: status + menu */}
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '20px', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flexShrink: 0 }}>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '4px' }}>Status</div>
                           {isResolved ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#16a34a', fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a', fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                               Resolved
                             </div>
                           ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: alert.severity === 'critical' ? '#ef4444' : alert.severity === 'warning' ? '#f59e0b' : '#3b82f6', fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: alert.severity === 'critical' ? '#ef4444' : alert.severity === 'warning' ? '#f59e0b' : '#3b82f6', fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                               Active
                             </div>
                           )}
                         </div>
 
-                        {/* Three-dot menu — no Acknowledge option */}
                         <div style={{ position: 'relative' }}>
                           <button
                             onClick={e => { e.stopPropagation(); setOpenMenuId(isMenuOpen ? null : alert.id); }}
@@ -234,7 +244,6 @@ export default function Alerts() {
                           >⋮</button>
                           {isMenuOpen && (
                             <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: '100%', background: 'white', border: '1px solid #e2e8f0', zIndex: 50, minWidth: '130px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                              {/* Acknowledge removed entirely */}
                               {!isResolved && (
                                 <button onClick={() => { resolve(alert.id); setOpenMenuId(null); }} style={{ display: 'block', width: '100%', padding: '9px 14px', border: 'none', background: 'none', textAlign: 'left', fontSize: '13px', color: '#16a34a', cursor: 'pointer', fontWeight: 500 }}
                                   onMouseEnter={e => e.target.style.background = '#f8fafc'} onMouseLeave={e => e.target.style.background = 'none'}>

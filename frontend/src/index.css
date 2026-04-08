@@ -29,6 +29,8 @@
 
 * { box-sizing: border-box; padding: 0; margin: 0; border-radius: 0 !important; }
 
+.status-dot { border-radius: 50% !important; }
+
 html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; scroll-behavior: smooth; }
 
 body { font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text-primary); line-height: 1.5; }
@@ -73,3 +75,117 @@ input[type='range']::-moz-range-thumb {
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 .fade-in { animation: fadeIn 0.4s ease forwards; }
+
+/* ═══════════════════════════════════════════════════════
+   MOBILE RESPONSIVE STYLES
+═══════════════════════════════════════════════════════ */
+
+/* Mobile hamburger button — hidden on desktop */
+.mobile-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  padding: 4px;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: flex;
+  }
+
+  /* Dashboard temp cards row */
+  .dashboard-temp-row {
+    gap: 10px !important;
+  }
+  .dashboard-temp-row > div {
+    min-width: 0;
+  }
+
+  /* Dashboard main grid: single column */
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Analytics header wrapping */
+  .analytics-topbar {
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  /* Settings form grids → single column */
+  .settings-form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Settings system info → 2 columns */
+  .settings-sysinfo-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Threshold sliders grid → single column */
+  .threshold-grid {
+    grid-template-columns: 1fr !important;
+    gap: 24px !important;
+  }
+
+  /* Filter pills → wrap */
+  .filter-pills-row {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  /* Horizontal scrollable table wrapper */
+  .table-scroll-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Reduced page content padding */
+  .mob-pad {
+    padding: 16px !important;
+  }
+  .mob-pad-top {
+    padding: 16px 16px 0 !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* Topbar reduced padding */
+  .mob-topbar-pad {
+    padding: 14px 16px !important;
+  }
+
+  /* Chart height adjustments */
+  .dashboard-chart-wrap {
+    height: 220px !important;
+  }
+  .analytics-chart-wrap {
+    height: 260px !important;
+  }
+
+  /* Temp card value size */
+  .temp-card-value {
+    font-size: 30px !important;
+  }
+
+  /* Range button group */
+  .range-btn-group button {
+    padding: 7px 12px !important;
+    font-size: 11px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-temp-row {
+    flex-direction: column !important;
+  }
+}
