@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Analytics from './pages/Analytics';
 import Alerts from './pages/Alerts';
 import Settings from './pages/Settings';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
@@ -16,14 +17,18 @@ function App() {
       <CssBaseline />
       <Router>
         <Routes>
-          <Route path="/health"    element={<HealthCheck />} />
-          <Route path="/"          element={<LoginPage />} />
-          <Route path="/signup"    element={<SignUpPage />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="/alerts"    element={<Alerts />} />
-          <Route path="/settings"  element={<Settings />} />
-          <Route path="*"          element={<Navigate to="/" replace />} />
+          {/* Public routes */}
+          <Route path="/health"  element={<HealthCheck />} />
+          <Route path="/"        element={<LoginPage />} />
+          <Route path="/signup"  element={<SignUpPage />} />
+
+          {/* Protected routes — redirect to login if not authenticated */}
+          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+          <Route path="/alerts"    element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
+          <Route path="/settings"  element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
     </ThemeProvider>

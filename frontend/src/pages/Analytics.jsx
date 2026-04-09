@@ -3,6 +3,22 @@ import Navigation from "../components/Navigation";
 import { apiFetch } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
+/* ── Hamburger trigger ─────────────────────────────────────────── */
+function HamburgerBtn() {
+  return (
+    <button
+      className="mobile-menu-btn"
+      onClick={() => window.dispatchEvent(new Event('openMobileNav'))}
+    >
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+  );
+}
+
 function fmtDate(d) {
   return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
 }
@@ -14,9 +30,9 @@ function fmtTime(d) {
 function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
   if (!readings || readings.length === 0) return null;
 
-  // For 7D/30D: aggregate readings into daily averages
+  // Only aggregate into daily buckets for the 7-day view
   let processedReadings = readings;
-  if (range === '7D' || range === '30D') {
+  if (range === '7D') {
     const dayBuckets = {};
     readings.forEach(r => {
       const d = new Date(r.bucket_at);
@@ -42,7 +58,10 @@ function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
 
   const labels = processedReadings.map(r => {
     const d = new Date(r.bucket_at);
-    return range === '24H' ? fmtTime(d) : fmtDate(d);
+    if (range === '24H') return fmtTime(d);
+    if (range === '7D') return fmtDate(d);
+    // 2D: show date + time so both days are distinguishable
+    return `${fmtDate(d)} ${fmtTime(d)}`;
   });
 
   const internalAvg = processedReadings.map(r => parseFloat(parseFloat(r.temperature).toFixed(1)));
@@ -61,7 +80,6 @@ function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
     return extT !== null ? parseFloat((intT - extT).toFixed(1)) : null;
   });
 
-  // Summaries always grouped by calendar date (MM/DD/YYYY)
   const dayMap = {};
   processedReadings.forEach((r, i) => {
     const d = new Date(r.bucket_at);
@@ -81,16 +99,13 @@ function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
     const extMin = extTemps.length ? Math.min(...extTemps) : null;
     const extMax = extTemps.length ? Math.max(...extTemps) : null;
     const diffVal = extAvgVal !== null ? intAvgVal - extAvgVal : null;
-    // Normal range in Fahrenheit: 9–45°F above ambient
     const isNormal = diffVal !== null ? (diffVal >= 9 && diffVal <= 45) : true;
     const avgRssi = rssis.length ? Math.round(rssis.reduce((a, b) => a + b, 0) / rssis.length) : null;
     return {
       date,
-      intAvg: `${intAvgVal.toFixed(1)}°F`,
-      intRange: `${intMin.toFixed(1)}–${intMax.toFixed(1)}°F`,
-      extAvg: extAvgVal !== null ? `${extAvgVal.toFixed(1)}°F` : 'N/A',
-      extRange: extMin !== null ? `${extMin.toFixed(1)}–${extMax.toFixed(1)}°F` : 'N/A',
-      diff: diffVal !== null ? `${diffVal.toFixed(1)}°F` : 'N/A',
+      intAvg: `${intAvgVal.toFixed(1)}°`,
+      extAvg: extAvgVal !== null ? `${extAvgVal.toFixed(1)}°` : 'N/A',
+      diff: diffVal !== null ? `+${diffVal.toFixed(1)}°` : 'N/A',
       status: isNormal ? 'Normal' : 'Warning',
       avgRssi: avgRssi !== null ? `${avgRssi} dBm` : 'N/A',
     };
@@ -113,72 +128,13 @@ function AnalyticsChart({ data, view }) {
 
       const datasets = view === 'comparison'
         ? [
-            {
-              type: 'bar',
-              label: 'Temp Difference (°F)',
-              data: data.tempDiff,
-              backgroundColor: 'rgba(34,197,94,0.75)',
-              borderWidth: 0,
-              borderRadius: 0,
-              barPercentage: 0.85,
-              categoryPercentage: 0.9,
-              order: 3,
-            },
-            {
-              type: 'line',
-              label: 'Internal Avg (°F)',
-              data: data.internalAvg,
-              borderColor: '#f5a623',
-              borderWidth: 2.5,
-              backgroundColor: 'transparent',
-              fill: false,
-              tension: 0.3,
-              pointRadius: 0,
-              pointHoverRadius: 4,
-              pointHoverBackgroundColor: '#f5a623',
-              order: 1,
-            },
-            {
-              type: 'line',
-              label: 'External Avg (°F)',
-              data: data.externalAvg,
-              borderColor: '#1e2d4a',
-              borderWidth: 2,
-              borderDash: [5, 4],
-              backgroundColor: 'transparent',
-              fill: false,
-              tension: 0.45,
-              pointRadius: 0,
-              pointHoverRadius: 4,
-              pointHoverBackgroundColor: '#1e2d4a',
-              order: 2,
-            },
+            { type: 'bar', label: 'Temp Difference (°F)', data: data.tempDiff, backgroundColor: 'rgba(34,197,94,0.75)', borderWidth: 0, barPercentage: 0.85, categoryPercentage: 0.9, order: 3 },
+            { type: 'line', label: 'Internal Avg (°F)', data: data.internalAvg, borderColor: '#f5a623', borderWidth: 2.5, backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, spanGaps: false, order: 1 },
+            { type: 'line', label: 'External Avg (°F)', data: data.externalAvg, borderColor: '#1e2d4a', borderWidth: 2, borderDash: [5, 4], backgroundColor: 'transparent', fill: false, tension: 0.45, pointRadius: 0, spanGaps: false, order: 2 },
           ]
         : [
-            {
-              type: 'line',
-              label: 'Internal Avg (°F)',
-              data: data.internalAvg,
-              borderColor: '#f5a623',
-              borderWidth: 2.5,
-              backgroundColor: 'rgba(245,166,35,0.15)',
-              fill: true,
-              tension: 0.3,
-              pointRadius: 0,
-              order: 1,
-            },
-            {
-              type: 'line',
-              label: 'External Avg (°F)',
-              data: data.externalAvg,
-              borderColor: '#1e2d4a',
-              borderWidth: 2,
-              backgroundColor: 'rgba(30,45,74,0.10)',
-              fill: true,
-              tension: 0.45,
-              pointRadius: 0,
-              order: 2,
-            },
+            { type: 'line', label: 'Internal Avg (°F)', data: data.internalAvg, borderColor: '#f5a623', borderWidth: 2.5, backgroundColor: 'rgba(245,166,35,0.15)', fill: true, tension: 0.3, pointRadius: 0, spanGaps: false, order: 1 },
+            { type: 'line', label: 'External Avg (°F)', data: data.externalAvg, borderColor: '#1e2d4a', borderWidth: 2, backgroundColor: 'rgba(30,45,74,0.10)', fill: true, tension: 0.45, pointRadius: 0, spanGaps: false, order: 2 },
           ];
 
       chartRef.current = new Chart(ctx, {
@@ -190,61 +146,30 @@ function AnalyticsChart({ data, view }) {
           animation: { duration: 500 },
           plugins: {
             legend: {
-              display: true,
-              position: 'bottom',
-              align: 'start',
-              labels: {
-                color: '#64748b',
-                font: { size: 11, family: "'DM Sans', system-ui" },
-                boxWidth: 12, boxHeight: 12, padding: 20,
-                usePointStyle: true, pointStyleWidth: 12,
-              },
+              display: true, position: 'bottom', align: 'start',
+              labels: { color: '#64748b', font: { size: 11, family: "'DM Sans', system-ui" }, boxWidth: 12, boxHeight: 12, padding: 20, usePointStyle: true, pointStyleWidth: 12 },
             },
             tooltip: {
-              backgroundColor: 'rgba(255,255,255,0.97)',
-              titleColor: '#1e2d4a',
-              bodyColor: '#64748b',
-              borderColor: '#e2e8f0',
-              borderWidth: 1,
-              padding: 10,
-              cornerRadius: 0,
-              callbacks: {
-                label: (c) => c.parsed.y != null ? `  ${c.dataset.label}: ${c.parsed.y.toFixed(1)}` : null,
-              },
+              backgroundColor: 'rgba(255,255,255,0.97)', titleColor: '#1e2d4a', bodyColor: '#64748b',
+              borderColor: '#e2e8f0', borderWidth: 1, padding: 10, cornerRadius: 0,
+              callbacks: { label: (c) => c.parsed.y != null ? `  ${c.dataset.label}: ${c.parsed.y.toFixed(1)}` : null },
             },
           },
           scales: {
             x: {
-              grid: { color: 'rgba(100,116,139,0.10)', borderDash: [3,3] },
-              border: { display: false },
-              ticks: {
-                color: '#94a3b8',
-                font: { size: 10, family: "'DM Sans', system-ui" },
-                maxRotation: 0,
-                autoSkip: true,
-                callback: function(val) { return this.getLabelForValue(val) || null; },
-              },
+              grid: { color: 'rgba(100,116,139,0.10)', borderDash: [3,3] }, border: { display: false },
+              ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxRotation: 0, autoSkip: true },
             },
             y: {
-              position: 'left',
-              grid: { color: 'rgba(100,116,139,0.10)', borderDash: [3,3] },
-              border: { display: false },
-              ticks: {
-                color: '#94a3b8',
-                font: { size: 10, family: "'DM Sans', system-ui" },
-                maxTicksLimit: 6,
-                callback: v => `${v}°F`,
-              },
-              min: 0,
+              position: 'left', grid: { color: 'rgba(100,116,139,0.10)', borderDash: [3,3] }, border: { display: false },
+              ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxTicksLimit: 6, callback: v => `${v}°F` }, min: 0,
             },
           },
         },
       });
     };
 
-    if (window.Chart) {
-      buildChart();
-    } else {
+    if (window.Chart) { buildChart(); } else {
       const script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
       script.onload = buildChart;
@@ -257,35 +182,32 @@ function AnalyticsChart({ data, view }) {
   return <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />;
 }
 
-const RANGE_DAYS = { '24H': 1, '7D': 7, '30D': 30 };
-const RANGE_LIMITS = { '24H': 300, '7D': 1500, '30D': 5000 };
+const RANGE_DAYS   = { '24H': 1, '2D': 2, '7D': 7 };
+const RANGE_LIMITS = { '24H': 300, '2D': 600, '7D': 1500 };
 const FILTER_OPTIONS = ['All', 'Normal', 'Warning'];
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
 function exportToCSV(summaries, range) {
-  const header = 'Date,Int. Avg,Int. Range,Ext. Avg,Ext. Range,Diff,Status,Avg RSSI\n';
-  const rows = summaries.map(r =>
-    `${r.date},${r.intAvg},${r.intRange},${r.extAvg},${r.extRange},${r.diff},${r.status},${r.avgRssi}`
-  ).join('\n');
+  const header = 'Date,Int. Avg,Ext. Avg,Diff,Status,Avg RSSI\n';
+  const rows = summaries.map(r => `${r.date},${r.intAvg},${r.extAvg},${r.diff},${r.status},${r.avgRssi}`).join('\n');
   const blob = new Blob([header + rows], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = `beehive-analytics-${range}.csv`;
-  a.click();
+  a.href = url; a.download = `beehive-analytics-${range}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
 
 export default function Analytics() {
   const { ready: authReady, error: authError } = useAuth();
   const [range, setRange] = useState('24H');
-  // 'ranges' is now the default (first) view
-  const [view, setView] = useState('ranges');
+  const [view] = useState('ranges');
   const [chartData, setChartData] = useState(null);
   const [allSummaries, setAllSummaries] = useState([]);
   const [filterIdx, setFilterIdx] = useState(0);
   const [visibleCount, setVisibleCount] = useState(5);
   const [toast, setToast] = useState(null);
   const [dataLoading, setDataLoading] = useState(false);
+  const [hiveId, setHiveId] = useState(null);
 
   const hiveIdRef = useRef(null);
 
@@ -296,14 +218,15 @@ export default function Analytics() {
         const hives = res?.hives ?? [];
         if (hives.length > 0) {
           hiveIdRef.current = hives[0].id;
+          setHiveId(hives[0].id);
           loadData('24H', hives[0].id);
         }
       })
       .catch(() => {});
   }, [authReady, authError]);
 
-  const loadData = useCallback(async (selectedRange, hiveId) => {
-    const id = hiveId ?? hiveIdRef.current;
+  const loadData = useCallback(async (selectedRange, hId) => {
+    const id = hId ?? hiveIdRef.current;
     if (!id) return;
 
     const days = RANGE_DAYS[selectedRange];
@@ -317,12 +240,8 @@ export default function Analytics() {
         apiFetch(`/api/external-conditions/since?hiveId=${id}&since=${since}&order=asc&limit=${limit}`),
       ]);
 
-      const readings = readingsRes.status === 'fulfilled'
-        ? (readingsRes.value?.readings ?? [])
-        : [];
-      const externalConditions = extRes.status === 'fulfilled'
-        ? (extRes.value?.externalConditions ?? [])
-        : [];
+      const readings = readingsRes.status === 'fulfilled' ? (readingsRes.value?.readings ?? []) : [];
+      const externalConditions = extRes.status === 'fulfilled' ? (extRes.value?.externalConditions ?? []) : [];
 
       const realData = buildChartDataFromAPI(readings, externalConditions, selectedRange);
       setChartData(realData ?? null);
@@ -340,12 +259,20 @@ export default function Analytics() {
     if (!authReady || authError) return;
     if (hiveIdRef.current) {
       loadData(range, hiveIdRef.current);
-    } else {
-      setChartData(null);
-      setAllSummaries([]);
-      setVisibleCount(5);
     }
   }, [range, loadData, authReady, authError]);
+
+  // Auto-refresh every 5 minutes
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (hiveIdRef.current) loadData(range, hiveIdRef.current);
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [range, loadData]);
+
+  const handleRefresh = () => {
+    if (hiveIdRef.current && !dataLoading) loadData(range, hiveIdRef.current);
+  };
 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
@@ -371,7 +298,8 @@ export default function Analytics() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
       <Navigation />
-      <main style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+      <main style={{ flex: 1, overflow: 'auto', minWidth: 0, position: 'relative' }}>
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
         {toast && (
           <div style={{
@@ -386,72 +314,94 @@ export default function Analytics() {
           </div>
         )}
 
-        <div style={{ padding: '24px 28px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <div>
-            <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Analytics</h1>
-            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-              Data aggregation: {range === '24H' ? '10 mins' : 'daily avg'} &nbsp;·&nbsp; Range: {range}
-              {dataLoading && ' · Loading…'}
-            </div>
+        {/* ── Page header ── */}
+        <div className="analytics-topbar mob-topbar-pad" style={{ padding: '20px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', background: 'white' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <HamburgerBtn />
+            <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Analytics</span>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <div style={{ display: 'flex', background: 'white', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-              {['24H', '7D', '30D'].map(r => (
-                <button key={r} onClick={() => setRange(r)} style={{
-                  padding: '7px 16px', border: 'none',
-                  background: range === r ? '#1e2d4a' : 'white',
-                  color: range === r ? 'white' : '#64748b',
-                  fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
-                  opacity: dataLoading ? 0.6 : 1,
-                }}>{r}</button>
-              ))}
-            </div>
-            <button
-              onClick={handleExport}
-              disabled={allSummaries.length === 0}
-              style={{
-                padding: '7px 14px', border: '1.5px solid #e2e8f0',
-                background: 'white', color: '#1e2d4a', fontSize: '12px', fontWeight: 700,
-                cursor: allSummaries.length === 0 ? 'not-allowed' : 'pointer',
-                opacity: allSummaries.length === 0 ? 0.5 : 1,
-                display: 'flex', alignItems: 'center', gap: '6px',
-                boxShadow: 'var(--shadow-sm)', transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => { if (allSummaries.length) e.currentTarget.style.background = '#f8fafc'; }}
-              onMouseLeave={e => e.currentTarget.style.background = 'white'}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              Export CSV
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
+            <span>#{hiveId ?? '—'}</span>
+            <span style={{ width: '8px', height: '8px', background: '#22c55e', display: 'inline-block', borderRadius: '50%', boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
           </div>
         </div>
 
-        <div style={{ padding: '0 28px 28px' }}>
-          <div style={{ background: 'white', padding: '22px', boxShadow: 'var(--shadow-sm)', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Beehive Temperature Analytics</div>
-                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
-                  {range === '24H' ? 'Hourly readings (°F)' : 'Daily averages (°F)'}
-                </div>
-              </div>
-              {/* Ranges first, then comparison */}
-              <div style={{ display: 'flex', gap: '4px' }}>
-                {/* {['ranges', 'comparison'].map(v => (
-                  <button key={v} onClick={() => setView(v)} style={{
-                    padding: '6px 14px', border: 'none',
-                    background: view === v ? '#f1f5f9' : 'transparent',
-                    color: view === v ? '#1e2d4a' : '#94a3b8',
-                    fontSize: '11px', fontWeight: 700, cursor: 'pointer',
-                    textTransform: 'uppercase', letterSpacing: '0.05em',
-                    transition: 'all 0.15s',
-                  }}>{v}</button>
-                ))} */}
+        <div className="mob-pad" style={{ padding: '24px 28px 28px' }}>
+
+          {/* ── Section header with range + export ── */}
+          <div className="analytics-topbar" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', gap: '12px' }}>
+            <div>
+              <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Performance Reports</h1>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Data aggregation: {range === '7D' ? 'daily avg' : '10 mins'}
+                {dataLoading && ' · Loading…'}
               </div>
             </div>
-            <div style={{ height: '340px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+              <div className="range-btn-group" style={{ display: 'flex', background: 'white', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+                {['24H', '2D', '7D'].map(r => (
+                  <button key={r} onClick={() => setRange(r)} style={{
+                    padding: '7px 16px', border: 'none',
+                    background: range === r ? '#1e2d4a' : 'white',
+                    color: range === r ? 'white' : '#64748b',
+                    fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                    opacity: dataLoading ? 0.6 : 1,
+                  }}>{r}</button>
+                ))}
+              </div>
+              <button
+                onClick={handleExport}
+                disabled={allSummaries.length === 0}
+                style={{
+                  padding: '7px 14px', border: '1.5px solid #e2e8f0',
+                  background: 'white', color: '#1e2d4a', fontSize: '12px', fontWeight: 700,
+                  cursor: allSummaries.length === 0 ? 'not-allowed' : 'pointer',
+                  opacity: allSummaries.length === 0 ? 0.5 : 1,
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  boxShadow: 'var(--shadow-sm)',
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Export
+              </button>
+            </div>
+          </div>
+
+          {/* ── Chart ── */}
+          <div style={{ background: 'white', padding: '22px 22px 14px', boxShadow: 'var(--shadow-sm)', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Insulation Efficiency</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
+                  {range === '7D' ? 'Daily averages (°F)' : 'Raw readings (°F)'}
+                </div>
+              </div>
+              <button
+                onClick={handleRefresh}
+                disabled={dataLoading}
+                title="Refresh chart"
+                style={{
+                  padding: '5px 10px', border: '1px solid #e2e8f0',
+                  background: 'white', color: dataLoading ? '#94a3b8' : '#64748b',
+                  fontSize: '11px', fontWeight: 700, cursor: dataLoading ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                }}
+                onMouseEnter={e => { if (!dataLoading) e.currentTarget.style.background = '#f8fafc'; }}
+                onMouseLeave={e => e.currentTarget.style.background = 'white'}
+              >
+                <svg
+                  width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                  style={{ animation: dataLoading ? 'spin 1s linear infinite' : 'none' }}
+                >
+                  <polyline points="23 4 23 10 17 10"/>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+                Refresh
+              </button>
+            </div>
+            <div className="analytics-chart-wrap" style={{ height: '300px' }}>
               {dataLoading || !chartData ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: '10px' }}>
                   <span style={{ fontSize: '32px' }}>📈</span>
@@ -465,6 +415,7 @@ export default function Analytics() {
             </div>
           </div>
 
+          {/* ── Daily Summaries ── */}
           <div style={{ background: 'white', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
             <div style={{ padding: '16px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -482,31 +433,27 @@ export default function Analytics() {
                   fontSize: '11px', fontWeight: 700,
                   color: currentFilter !== 'All' ? 'white' : '#64748b',
                   cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.04em',
-                  transition: 'all 0.15s',
                 }}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
                 </svg>
-                Filter: {currentFilter}
+                {currentFilter}
               </button>
             </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="table-scroll-wrapper">
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '400px' }}>
                 <thead>
                   <tr style={{ background: '#fafbfc' }}>
                     {[
-                      { label: 'DATE',       color: '#94a3b8' },
-                      { label: 'INT. AVG',   color: '#f5a623' },
-                      { label: 'INT. RANGE', color: '#f5a623' },
-                      { label: 'EXT. AVG',   color: '#1e2d4a' },
-                      { label: 'EXT. RANGE', color: '#94a3b8' },
-                      { label: 'DIFF',       color: '#22c55e' },
-                      { label: 'STATUS',     color: '#94a3b8' },
-                      { label: 'AVG RSSI',   color: '#94a3b8' },
+                      { label: 'DATE', color: '#94a3b8' },
+                      { label: 'INT. AVG', color: '#f5a623' },
+                      { label: 'EXT. AVG', color: '#1e2d4a' },
+                      { label: 'DELTA', color: '#22c55e' },
+                      { label: 'STATUS', color: '#94a3b8' },
                     ].map(h => (
                       <th key={h.label} style={{
-                        padding: '10px 20px', textAlign: 'left',
+                        padding: '10px 16px', textAlign: 'left',
                         fontSize: '10px', fontWeight: 700, color: h.color,
                         letterSpacing: '0.07em', textTransform: 'uppercase',
                         borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap',
@@ -517,7 +464,7 @@ export default function Analytics() {
                 <tbody>
                   {visibleSummaries.length === 0 ? (
                     <tr>
-                      <td colSpan="8" style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                      <td colSpan="5" style={{ padding: '40px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
                         {dataLoading ? 'Loading summaries…' : 'No records found. Send readings from your sensor to see data here.'}
                       </td>
                     </tr>
@@ -527,38 +474,32 @@ export default function Analytics() {
                         onMouseEnter={e => e.currentTarget.style.background = '#fafbfc'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                       >
-                        <td style={{ padding: '12px 20px', fontSize: '13px', fontWeight: 600, color: '#1e2d4a', whiteSpace: 'nowrap' }}>{row.date}</td>
-                        <td style={{ padding: '12px 20px', fontSize: '13px', color: '#f5a623', fontWeight: 700 }}>{row.intAvg}</td>
-                        <td style={{ padding: '12px 20px', fontSize: '13px', color: '#f5a623' }}>{row.intRange}</td>
-                        <td style={{ padding: '12px 20px', fontSize: '13px', color: '#1e2d4a', fontWeight: 600 }}>{row.extAvg}</td>
-                        <td style={{ padding: '12px 20px', fontSize: '13px', color: '#64748b' }}>{row.extRange}</td>
-                        <td style={{ padding: '12px 20px', fontSize: '13px', color: '#22c55e', fontWeight: 700 }}>{row.diff}</td>
-                        <td style={{ padding: '12px 20px' }}>
+                        <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600, color: '#1e2d4a', whiteSpace: 'nowrap' }}>{row.date}</td>
+                        <td style={{ padding: '12px 16px', fontSize: '13px', color: '#f5a623', fontWeight: 700 }}>{row.intAvg}</td>
+                        <td style={{ padding: '12px 16px', fontSize: '13px', color: '#1e2d4a', fontWeight: 600 }}>{row.extAvg}</td>
+                        <td style={{ padding: '12px 16px', fontSize: '13px', color: '#22c55e', fontWeight: 700 }}>{row.diff}</td>
+                        <td style={{ padding: '12px 16px' }}>
                           <span style={{
                             padding: '3px 10px', fontSize: '11px', fontWeight: 700,
                             background: row.status === 'Normal' ? '#dcfce7' : '#fef3c7',
                             color: row.status === 'Normal' ? '#16a34a' : '#d97706',
                           }}>{row.status}</span>
                         </td>
-                        <td style={{ padding: '12px 20px', fontSize: '13px', color: '#64748b' }}>{row.avgRssi}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
             </div>
-            <div style={{ padding: '16px', textAlign: 'center' }}>
+            <div style={{ padding: '14px', textAlign: 'center' }}>
               {hasMore ? (
                 <button
                   onClick={() => setVisibleCount(c => c + 5)}
                   style={{
                     padding: '8px 28px', border: '1.5px solid #e2e8f0',
                     background: 'white', fontSize: '12px', fontWeight: 700,
-                    color: '#1e2d4a', cursor: 'pointer', textTransform: 'uppercase',
-                    letterSpacing: '0.05em', transition: 'background 0.15s',
+                    color: '#1e2d4a', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'white'}
                 >
                   Load More ({filteredSummaries.length - visibleCount} remaining)
                 </button>
