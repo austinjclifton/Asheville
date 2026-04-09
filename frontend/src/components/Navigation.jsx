@@ -165,13 +165,11 @@ export default function Navigation() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
-              width: '40px', height: '40px', background: '#f5a623',
+              width: '40px', height: '40px',
               borderRadius: '10px', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', flexShrink: 0,
+              justifyContent: 'center', flexShrink: 0, overflow: 'hidden',
             }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z" fill="white" opacity="0.95"/>
-              </svg>
+              <img src="/bee-logo.png" alt="Asheville logo" width="40" height="40" style={{ display: 'block', objectFit: 'cover' }} />
             </div>
             {effectiveExpanded && (
               <div>

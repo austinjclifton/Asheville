@@ -60,7 +60,7 @@ input[type='range']::-webkit-slider-thumb {
   height: 14px;
   background: white;
   border: 2px solid var(--slider-color, #1e2d4a);
-  border-radius: 0 !important;
+  border-radius: 50% !important;
   cursor: pointer;
 }
 input[type='range']::-moz-range-thumb {
@@ -68,7 +68,7 @@ input[type='range']::-moz-range-thumb {
   height: 14px;
   background: white;
   border: 2px solid var(--slider-color, #1e2d4a);
-  border-radius: 0 !important;
+  border-radius: 50% !important;
   cursor: pointer;
 }
 

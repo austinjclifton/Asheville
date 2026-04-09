@@ -114,6 +114,55 @@ function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
   return { labels, internalAvg, externalAvg, tempDiff, summaries };
 }
 
+// Always builds daily summaries from raw readings regardless of chart range
+function buildSummaries(readings, externalConditions) {
+  if (!readings || readings.length === 0) return [];
+
+  const extByTs = {};
+  if (externalConditions && externalConditions.length > 0) {
+    externalConditions.forEach(ec => {
+      const ts = Math.floor(new Date(ec.bucket_at).getTime() / (10 * 60 * 1000));
+      extByTs[ts] = ec.temperature;
+    });
+  }
+
+  const dayMap = {};
+  readings.forEach(r => {
+    const d = new Date(r.bucket_at);
+    const day = fmtDate(d);
+    if (!dayMap[day]) dayMap[day] = { temps: [], extTemps: [], rssis: [] };
+    dayMap[day].temps.push(parseFloat(r.temperature));
+    if (r.rssi != null) dayMap[day].rssis.push(r.rssi);
+    const ts = Math.floor(d.getTime() / (10 * 60 * 1000));
+    for (const offset of [0, 1, -1]) {
+      const val = extByTs[ts + offset];
+      if (val !== undefined && val !== null) { dayMap[day].extTemps.push(parseFloat(val)); break; }
+    }
+  });
+
+  return Object.entries(dayMap)
+    .sort(([a], [b]) => {
+      // Sort descending by date (MM/DD — compare as current-year dates)
+      const toMs = s => { const [m, d] = s.split('/'); return new Date(new Date().getFullYear(), m - 1, d).getTime(); };
+      return toMs(b) - toMs(a);
+    })
+    .map(([date, { temps, extTemps, rssis }]) => {
+      const intAvgVal = temps.reduce((a, b) => a + b, 0) / temps.length;
+      const extAvgVal = extTemps.length ? extTemps.reduce((a, b) => a + b, 0) / extTemps.length : null;
+      const diffVal   = extAvgVal !== null ? intAvgVal - extAvgVal : null;
+      const isNormal  = diffVal !== null ? (diffVal >= 9 && diffVal <= 45) : true;
+      const avgRssi   = rssis.length ? Math.round(rssis.reduce((a, b) => a + b, 0) / rssis.length) : null;
+      return {
+        date,
+        intAvg:  `${intAvgVal.toFixed(1)}°`,
+        extAvg:  extAvgVal !== null ? `${extAvgVal.toFixed(1)}°` : 'N/A',
+        diff:    diffVal !== null ? `${diffVal >= 0 ? '+' : ''}${diffVal.toFixed(1)}°` : 'N/A',
+        status:  isNormal ? 'Normal' : 'Warning',
+        avgRssi: avgRssi !== null ? `${avgRssi} dBm` : 'N/A',
+      };
+    });
+}
+
 function AnalyticsChart({ data, view }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
@@ -233,25 +282,34 @@ export default function Analytics() {
     const limit = RANGE_LIMITS[selectedRange] ?? 500;
     setDataLoading(true);
     try {
-      const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+      const chartSince = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+      // Summaries always cover last 7 days regardless of chart range
+      const summarySince = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
 
-      const [readingsRes, extRes] = await Promise.allSettled([
-        apiFetch(`/api/readings/since?hiveId=${id}&since=${since}&order=asc&limit=${limit}`),
-        apiFetch(`/api/external-conditions/since?hiveId=${id}&since=${since}&order=asc&limit=${limit}`),
+      const [chartReadingsRes, chartExtRes, summaryReadingsRes, summaryExtRes] = await Promise.allSettled([
+        apiFetch(`/api/readings/since?hiveId=${id}&since=${chartSince}&order=asc&limit=${limit}`),
+        apiFetch(`/api/external-conditions/since?hiveId=${id}&since=${chartSince}&order=asc&limit=${limit}`),
+        apiFetch(`/api/readings/since?hiveId=${id}&since=${summarySince}&order=asc&limit=5000`),
+        apiFetch(`/api/external-conditions/since?hiveId=${id}&since=${summarySince}&order=asc&limit=5000`),
       ]);
 
-      const readings = readingsRes.status === 'fulfilled' ? (readingsRes.value?.readings ?? []) : [];
-      const externalConditions = extRes.status === 'fulfilled' ? (extRes.value?.externalConditions ?? []) : [];
+      const chartReadings = chartReadingsRes.status === 'fulfilled' ? (chartReadingsRes.value?.readings ?? []) : [];
+      const chartExt      = chartExtRes.status === 'fulfilled'      ? (chartExtRes.value?.externalConditions ?? []) : [];
+      const summaryReadings = summaryReadingsRes.status === 'fulfilled' ? (summaryReadingsRes.value?.readings ?? []) : [];
+      const summaryExt      = summaryExtRes.status === 'fulfilled'      ? (summaryExtRes.value?.externalConditions ?? []) : [];
 
-      const realData = buildChartDataFromAPI(readings, externalConditions, selectedRange);
+      const realData = buildChartDataFromAPI(chartReadings, chartExt, selectedRange);
       setChartData(realData ?? null);
-      setAllSummaries(realData?.summaries ?? []);
+
+      // Build summaries from the full 7-day dataset
+      const summaryData = buildSummaries(summaryReadings, summaryExt);
+      setAllSummaries(summaryData);
     } catch {
       setChartData(null);
       setAllSummaries([]);
     } finally {
       setDataLoading(false);
-      setVisibleCount(5);
+      setVisibleCount(7);
     }
   }, []);
 
@@ -446,11 +504,12 @@ export default function Analytics() {
                 <thead>
                   <tr style={{ background: '#fafbfc' }}>
                     {[
-                      { label: 'DATE', color: '#94a3b8' },
+                      { label: 'DATE',     color: '#94a3b8' },
                       { label: 'INT. AVG', color: '#f5a623' },
                       { label: 'EXT. AVG', color: '#1e2d4a' },
-                      { label: 'DELTA', color: '#22c55e' },
-                      { label: 'STATUS', color: '#94a3b8' },
+                      { label: 'DELTA',    color: '#22c55e' },
+                      { label: 'STATUS',   color: '#94a3b8' },
+                      { label: 'AVG RSSI', color: '#94a3b8' },
                     ].map(h => (
                       <th key={h.label} style={{
                         padding: '10px 16px', textAlign: 'left',
@@ -464,7 +523,7 @@ export default function Analytics() {
                 <tbody>
                   {visibleSummaries.length === 0 ? (
                     <tr>
-                      <td colSpan="5" style={{ padding: '40px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                      <td colSpan="6" style={{ padding: '40px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
                         {dataLoading ? 'Loading summaries…' : 'No records found. Send readings from your sensor to see data here.'}
                       </td>
                     </tr>
@@ -485,6 +544,7 @@ export default function Analytics() {
                             color: row.status === 'Normal' ? '#16a34a' : '#d97706',
                           }}>{row.status}</span>
                         </td>
+                        <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>{row.avgRssi}</td>
                       </tr>
                     ))
                   )}
