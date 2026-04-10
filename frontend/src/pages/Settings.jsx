@@ -181,8 +181,27 @@ export default function Settings() {
           const u = meRes.value?.user;
           if (u) { setDisplayName(u.username || ''); setAccountEmail(u.email || ''); if (u.phone && !localPrefs.phoneNum) setLocalPref('phoneNum', u.phone); }
         }
-        if (hivesRes.status === 'fulfilled') { const h = hivesRes.value?.hives ?? []; if (h.length) setHiveInfo(h[0]); }
-        if (devicesRes.status === 'fulfilled') { const d = devicesRes.value?.devices ?? []; if (d.length) { setDeviceId(d[0].id); setDeviceLastSeen(d[0].last_seen_at); } }
+        let hiveId = null;
+        if (hivesRes.status === 'fulfilled') {
+          const h = hivesRes.value?.hives ?? [];
+          if (h.length) { setHiveInfo(h[0]); hiveId = h[0].id; }
+        }
+        if (devicesRes.status === 'fulfilled') {
+          const d = devicesRes.value?.devices ?? [];
+          if (d.length) {
+            setDeviceId(d[0].id);
+            let lastSeen = d[0].last_seen_at;
+            // ingest doesn't call touchLastSeen, so check latest reading too
+            if (hiveId) {
+              try {
+                const latestRes = await apiFetch(`/api/readings/latest?hiveId=${hiveId}`);
+                const rt = latestRes?.reading?.received_at ?? latestRes?.reading?.bucket_at;
+                if (rt && (!lastSeen || new Date(rt) > new Date(lastSeen))) lastSeen = rt;
+              } catch {}
+            }
+            setDeviceLastSeen(lastSeen);
+          }
+        }
       } catch {} finally { setDeviceLoading(false); }
     }
     load();
@@ -190,7 +209,6 @@ export default function Settings() {
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 2800); };
 
-  // ── Save: persist locally AND call PATCH /api/auth/alert-settings ──
   const handleSave = async () => {
     setSaving(true);
     const cl = parseFloat(localPrefs.criticalLow), ch = parseFloat(localPrefs.criticalHigh);
@@ -205,7 +223,6 @@ export default function Settings() {
     if (ol >= oh) {
       showToast('Warning low must be less than warning high.', false); setSaving(false); return;
     }
-    // API requires strict: criticalLow < warningLow < warningHigh < criticalHigh
     if (ol <= cl || oh >= ch) {
       showToast('Warning range must be strictly within the critical range.', false); setSaving(false); return;
     }
@@ -237,8 +254,6 @@ export default function Settings() {
   const sensorId = deviceId != null ? String(deviceId) : '—';
   const firmwareVersion = 'V.2.4.1';
 
-  // ── Derived status label for System Information ─────────────────
-  // Show '—' when there's no device registered, rather than 'Offline'
   const statusLabel = deviceLoading
     ? '—'
     : deviceId != null
@@ -368,20 +383,18 @@ export default function Settings() {
             </div>
           </SectionCard>
 
-          {/* System Information — fixed: correct device status, no stale "Offline" when no device */}
+          {/* System Information */}
           <div style={{ background: 'white', border: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
               <span style={{ color: '#94a3b8' }}><ShieldIcon /></span>
               <span style={{ fontSize: '12px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>System Information</span>
             </div>
             <div className="settings-sysinfo-grid" style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
-              {/* Firmware Version */}
               <div>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Firmware Ver.</div>
                 <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>{firmwareVersion}</div>
               </div>
 
-              {/* Last Sync */}
               <div>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Last Sync</div>
                 <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>
@@ -389,7 +402,6 @@ export default function Settings() {
                 </div>
               </div>
 
-              {/* Sensor ID */}
               <div>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Sensor ID</div>
                 <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>
@@ -397,7 +409,6 @@ export default function Settings() {
                 </div>
               </div>
 
-              {/* Status — shows '—' when no device, 'Online'/'Offline' when device exists */}
               <div>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Status</div>
                 {deviceLoading ? (
