@@ -3,30 +3,30 @@ import Navigation from "../components/Navigation";
 import { apiFetch } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
-// ── Map a raw API alert to the display shape used by the UI ─────
+function fmtAlertTime(dateStr) {
+  const d = new Date(dateStr);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  return `${months[d.getMonth()]} ${d.getDate()}, ${hh}:${mm}`;
+}
+
 function mapApiAlert(alert) {
   const dir = alert.direction === 'low' ? 'below' : 'above';
   const sevLabel = alert.severity === 'critical' ? 'Critical' : 'Warning';
-  const title = `Temperature ${dir === 'below' ? 'Below' : 'Above'} ${sevLabel} Threshold`;
   const temp = parseFloat(alert.temperature).toFixed(1);
   const thresh = parseFloat(alert.threshold_value).toFixed(1);
   const description =
     `Hive ${alert.hive_id} temperature at ${temp}°F is ${dir} the ` +
     `${alert.severity} ${alert.direction} threshold of ${thresh}°F.` +
     (alert.severity === 'critical' ? ' Immediate attention required.' : ' Monitor closely.');
-
-  const d = new Date(alert.created_at);
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const hh = String(d.getHours()).padStart(2,'0');
-  const mm = String(d.getMinutes()).padStart(2,'0');
-
   return {
     id: alert.id,
     severity: alert.severity,
     status: alert.resolved ? 'resolved' : 'active',
-    title,
+    title: `Temperature ${dir === 'below' ? 'Below' : 'Above'} ${sevLabel} Threshold`,
     description,
-    time: `${months[d.getMonth()]} ${d.getDate()}, ${hh}:${mm}`,
+    time: fmtAlertTime(alert.created_at),
     sensor: `Device ${alert.device_id}`,
     temperature: parseFloat(alert.temperature),
   };
@@ -61,7 +61,6 @@ export default function Alerts() {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [hiveInfo, setHiveInfo] = useState(null);
 
-  // ── Fetch alerts from the API ──────────────────────────────────
   useEffect(() => {
     if (!authReady) return;
     if (authError) { setError('Authentication required.'); setLoading(false); return; }
@@ -71,44 +70,34 @@ export default function Alerts() {
   async function fetchAlerts() {
     setLoading(true); setError('');
     try {
-      // Load hive info for the header badge
       const hivesRes = await apiFetch('/api/hives');
       const hives = hivesRes?.hives ?? [];
       if (hives.length) setHiveInfo(hives[0]);
-
-      // Fetch real alerts from the API
       const alertsRes = await apiFetch('/api/alerts');
-      const rawAlerts = alertsRes?.alerts ?? [];
-      setAlerts(rawAlerts.map(mapApiAlert));
+      setAlerts((alertsRes?.alerts ?? []).map(mapApiAlert));
     } catch (err) {
-      setError(err.message || 'Failed to load alerts.');
+      setError(err.message || 'Failed to load activity data.');
       setAlerts([]);
     } finally {
       setLoading(false);
     }
   }
 
-  // ── Close any open kebab menu on outside click ─────────────────
   useEffect(() => {
     const handler = () => setOpenMenuId(null);
     document.addEventListener('click', handler);
     return () => document.removeEventListener('click', handler);
   }, []);
 
-  // ── Resolve a critical alert via PATCH /api/alerts/:id/resolve ─
   const handleResolve = async (id) => {
-    // Optimistic update first
     setAlerts(a => a.map(x => x.id === id ? { ...x, status: 'resolved' } : x));
     try {
       await apiFetch(`/api/alerts/${id}/resolve`, { method: 'PATCH' });
-    } catch (err) {
-      // Roll back on failure
+    } catch {
       setAlerts(a => a.map(x => x.id === id ? { ...x, status: 'active' } : x));
-      console.error('Resolve failed:', err.message);
     }
   };
 
-  // ── Dismiss removes the alert from the local list only ─────────
   const dismiss = id => setAlerts(a => a.filter(x => x.id !== id));
 
   const filtered = alerts.filter(a => {
@@ -123,7 +112,7 @@ export default function Alerts() {
   });
 
   const handleExport = () => {
-    const lines = ['Time,Severity,Status,Sensor,Title,Temperature', ...filtered.map(a => `${a.time},${a.severity},${a.status},${a.sensor},"${a.title}",${a.temperature}°F`)];
+    const lines = ['Time,Severity,Status,Sensor,Title,Temperature', ...filtered.map(a => `${a.time},${a.severity},${a.status},${a.sensor},${a.title},${a.temperature}°F`)];
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const el = document.createElement('a'); el.href = url; el.download = 'activity-log.csv'; el.click(); URL.revokeObjectURL(url);
@@ -146,12 +135,9 @@ export default function Alerts() {
             <HamburgerBtn />
             <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Activity</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500 }}>HIVE:</span>
-            <span style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a' }}>
-              {hiveInfo ? `#${hiveInfo.id}` : '—'}
-            </span>
-            <span className="status-dot" style={{ width: '10px', height: '10px', background: '#22c55e', display: 'inline-block', borderRadius: '50%', boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
+            <span>#{hiveInfo?.id ?? '—'}</span>
+            <span className="status-dot" style={{ width: '8px', height: '8px', background: '#22c55e', display: 'inline-block', borderRadius: '50%', boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
           </div>
         </div>
 
@@ -159,20 +145,13 @@ export default function Alerts() {
           {/* Title row */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', gap: '12px' }}>
             <div>
-              <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.01em' }}>Alerts</h1>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Real-Time Monitoring &amp; Critical Alerts</div>
+              <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.01em' }}>System Activity</h1>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Real-Time Monitoring Logs &amp; Alerts</div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-              {/* Refresh button */}
-              <button onClick={fetchAlerts} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 14px', border: '1px solid #e2e8f0', background: 'white', fontSize: '12px', fontWeight: 700, color: '#1e2d4a', cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase', boxShadow: 'var(--shadow-sm)', opacity: loading ? 0.6 : 1 }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                Refresh
-              </button>
-              <button onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 14px', border: '1px solid #e2e8f0', background: 'white', fontSize: '12px', fontWeight: 700, color: '#1e2d4a', cursor: 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase', boxShadow: 'var(--shadow-sm)' }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Export
-              </button>
-            </div>
+            <button onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 14px', border: '1px solid #e2e8f0', background: 'white', fontSize: '12px', fontWeight: 700, color: '#1e2d4a', cursor: 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase', boxShadow: 'var(--shadow-sm)', flexShrink: 0 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export
+            </button>
           </div>
 
           {/* Filter + Search */}
@@ -191,7 +170,7 @@ export default function Alerts() {
             <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input
-                type="text" placeholder="Search alerts…" value={search} onChange={e => setSearch(e.target.value)}
+                type="text" placeholder="Search logs…" value={search} onChange={e => setSearch(e.target.value)}
                 style={{ flex: 1, border: 'none', outline: 'none', fontSize: '14px', color: '#1e2d4a', background: 'transparent' }}
               />
               {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}>×</button>}
@@ -202,7 +181,7 @@ export default function Alerts() {
           {loading ? (
             <div style={{ background: 'white', border: '1px solid #e2e8f0', padding: '60px', textAlign: 'center' }}>
               <div style={{ fontSize: '28px', marginBottom: '10px', animation: 'pulse 1s infinite' }}>⏳</div>
-              <div style={{ color: '#64748b', fontSize: '14px', fontWeight: 500 }}>Loading alerts…</div>
+              <div style={{ color: '#64748b', fontSize: '14px', fontWeight: 500 }}>Loading activity data…</div>
             </div>
           ) : error ? (
             <div style={{ background: 'white', border: '1px solid #fecaca', padding: '40px', textAlign: 'center' }}>
@@ -211,7 +190,7 @@ export default function Alerts() {
           ) : filtered.length === 0 ? (
             <div style={{ background: 'white', border: '1px solid #e2e8f0', padding: '60px', textAlign: 'center' }}>
               <div style={{ color: '#64748b', fontSize: '14px', fontWeight: 500 }}>
-                {alerts.length === 0 ? 'No alerts yet. Alerts are generated when sensor readings cross your configured thresholds.' : 'No alerts match the current filters.'}
+                {alerts.length === 0 ? 'No alerts yet. Alerts are generated when sensor readings cross your configured thresholds.' : 'No events match the current filters'}
               </div>
             </div>
           ) : (
@@ -221,7 +200,7 @@ export default function Alerts() {
                 const color = SEVERITY_COLORS[alert.severity] || '#94a3b8';
                 const isMenuOpen = openMenuId === alert.id;
                 return (
-                  <div key={alert.id} style={{ background: 'white', borderLeft: `4px solid ${isResolved ? '#e2e8f0' : color}`, border: `1px solid ${isResolved ? '#e2e8f0' : color}` }}>
+                  <div key={alert.id} style={{ background: 'white', borderLeft: `4px solid ${color}`, border: isResolved ? '1px solid #e2e8f0' : `1px solid ${color}` }}>
                     <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
@@ -248,7 +227,7 @@ export default function Alerts() {
                               Resolved
                             </div>
                           ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: alert.severity === 'critical' ? '#ef4444' : '#f59e0b', fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: alert.severity === 'critical' ? '#ef4444' : alert.severity === 'warning' ? '#f59e0b' : '#3b82f6', fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                               Active
                             </div>
@@ -262,16 +241,13 @@ export default function Alerts() {
                           >⋮</button>
                           {isMenuOpen && (
                             <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: '100%', background: 'white', border: '1px solid #e2e8f0', zIndex: 50, minWidth: '130px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                              {/* Only critical alerts can be resolved via the API */}
                               {!isResolved && alert.severity === 'critical' && (
-                                <button onClick={() => { handleResolve(alert.id); setOpenMenuId(null); }}
-                                  style={{ display: 'block', width: '100%', padding: '9px 14px', border: 'none', background: 'none', textAlign: 'left', fontSize: '13px', color: '#16a34a', cursor: 'pointer', fontWeight: 500 }}
+                                <button onClick={() => { handleResolve(alert.id); setOpenMenuId(null); }} style={{ display: 'block', width: '100%', padding: '9px 14px', border: 'none', background: 'none', textAlign: 'left', fontSize: '13px', color: '#16a34a', cursor: 'pointer', fontWeight: 500 }}
                                   onMouseEnter={e => e.target.style.background = '#f8fafc'} onMouseLeave={e => e.target.style.background = 'none'}>
                                   Resolve
                                 </button>
                               )}
-                              <button onClick={() => { dismiss(alert.id); setOpenMenuId(null); }}
-                                style={{ display: 'block', width: '100%', padding: '9px 14px', border: 'none', background: 'none', textAlign: 'left', fontSize: '13px', color: '#ef4444', cursor: 'pointer', fontWeight: 500 }}
+                              <button onClick={() => { dismiss(alert.id); setOpenMenuId(null); }} style={{ display: 'block', width: '100%', padding: '9px 14px', border: 'none', background: 'none', textAlign: 'left', fontSize: '13px', color: '#ef4444', cursor: 'pointer', fontWeight: 500 }}
                                 onMouseEnter={e => e.target.style.background = '#fef2f2'} onMouseLeave={e => e.target.style.background = 'none'}>
                                 Dismiss
                               </button>
