@@ -30,7 +30,6 @@ function fmtTime(d) {
 function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
   if (!readings || readings.length === 0) return null;
 
-  // Only aggregate into daily buckets for the 7-day view
   let processedReadings = readings;
   if (range === '7D') {
     const dayBuckets = {};
@@ -60,7 +59,6 @@ function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
     const d = new Date(r.bucket_at);
     if (range === '24H') return fmtTime(d);
     if (range === '7D') return fmtDate(d);
-    // 2D: show date + time so both days are distinguishable
     return `${fmtDate(d)} ${fmtTime(d)}`;
   });
 
@@ -80,41 +78,9 @@ function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
     return extT !== null ? parseFloat((intT - extT).toFixed(1)) : null;
   });
 
-  const dayMap = {};
-  processedReadings.forEach((r, i) => {
-    const d = new Date(r.bucket_at);
-    const day = fmtDate(d);
-    if (!dayMap[day]) dayMap[day] = { temps: [], extTemps: [], rssis: [] };
-    dayMap[day].temps.push(parseFloat(r.temperature));
-    if (r.rssi != null) dayMap[day].rssis.push(r.rssi);
-    const extT = externalAvg[i];
-    if (extT !== null) dayMap[day].extTemps.push(extT);
-  });
-
-  const summaries = Object.entries(dayMap).map(([date, { temps, extTemps, rssis }]) => {
-    const intAvgVal = temps.reduce((a, b) => a + b, 0) / temps.length;
-    const intMin = Math.min(...temps);
-    const intMax = Math.max(...temps);
-    const extAvgVal = extTemps.length ? extTemps.reduce((a, b) => a + b, 0) / extTemps.length : null;
-    const extMin = extTemps.length ? Math.min(...extTemps) : null;
-    const extMax = extTemps.length ? Math.max(...extTemps) : null;
-    const diffVal = extAvgVal !== null ? intAvgVal - extAvgVal : null;
-    const isNormal = diffVal !== null ? (diffVal >= 9 && diffVal <= 45) : true;
-    const avgRssi = rssis.length ? Math.round(rssis.reduce((a, b) => a + b, 0) / rssis.length) : null;
-    return {
-      date,
-      intAvg: `${intAvgVal.toFixed(1)}°`,
-      extAvg: extAvgVal !== null ? `${extAvgVal.toFixed(1)}°` : 'N/A',
-      diff: diffVal !== null ? `+${diffVal.toFixed(1)}°` : 'N/A',
-      status: isNormal ? 'Normal' : 'Warning',
-      avgRssi: avgRssi !== null ? `${avgRssi} dBm` : 'N/A',
-    };
-  });
-
-  return { labels, internalAvg, externalAvg, tempDiff, summaries };
+  return { labels, internalAvg, externalAvg, tempDiff };
 }
 
-// Always builds daily summaries from raw readings regardless of chart range
 function buildSummaries(readings, externalConditions) {
   if (!readings || readings.length === 0) return [];
 
@@ -142,7 +108,6 @@ function buildSummaries(readings, externalConditions) {
 
   return Object.entries(dayMap)
     .sort(([a], [b]) => {
-      // Sort descending by date (MM/DD — compare as current-year dates)
       const toMs = s => { const [m, d] = s.split('/'); return new Date(new Date().getFullYear(), m - 1, d).getTime(); };
       return toMs(b) - toMs(a);
     })
@@ -257,6 +222,8 @@ export default function Analytics() {
   const [toast, setToast] = useState(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [hiveId, setHiveId] = useState(null);
+  // ── NEW: auto-refresh on/off toggle ─────────────────────────────
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   const hiveIdRef = useRef(null);
 
@@ -283,7 +250,6 @@ export default function Analytics() {
     setDataLoading(true);
     try {
       const chartSince = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
-      // Summaries always cover last 7 days regardless of chart range
       const summarySince = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
 
       const [chartReadingsRes, chartExtRes, summaryReadingsRes, summaryExtRes] = await Promise.allSettled([
@@ -301,7 +267,6 @@ export default function Analytics() {
       const realData = buildChartDataFromAPI(chartReadings, chartExt, selectedRange);
       setChartData(realData ?? null);
 
-      // Build summaries from the full 7-day dataset
       const summaryData = buildSummaries(summaryReadings, summaryExt);
       setAllSummaries(summaryData);
     } catch {
@@ -320,13 +285,14 @@ export default function Analytics() {
     }
   }, [range, loadData, authReady, authError]);
 
-  // Auto-refresh every 5 minutes
+  // ── Auto-refresh: interval only runs when autoRefresh is true ───
   useEffect(() => {
+    if (!autoRefresh) return;
     const id = setInterval(() => {
       if (hiveIdRef.current) loadData(range, hiveIdRef.current);
     }, AUTO_REFRESH_MS);
     return () => clearInterval(id);
-  }, [range, loadData]);
+  }, [range, loadData, autoRefresh]);
 
   const handleRefresh = () => {
     if (hiveIdRef.current && !dataLoading) loadData(range, hiveIdRef.current);
@@ -378,9 +344,12 @@ export default function Analytics() {
             <HamburgerBtn />
             <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Analytics</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
-            <span>#{hiveId ?? '—'}</span>
-            <span style={{ width: '8px', height: '8px', background: '#22c55e', display: 'inline-block', borderRadius: '50%', boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500 }}>HIVE:</span>
+            <span style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a' }}>
+              {hiveId ? `#${hiveId}` : '—'}
+            </span>
+            <span className="status-dot" style={{ width: '10px', height: '10px', background: '#22c55e', display: 'inline-block', borderRadius: '50%', boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
           </div>
         </div>
 
@@ -436,28 +405,54 @@ export default function Analytics() {
                   {range === '7D' ? 'Daily averages (°F)' : 'Raw readings (°F)'}
                 </div>
               </div>
-              <button
-                onClick={handleRefresh}
-                disabled={dataLoading}
-                title="Refresh chart"
-                style={{
-                  padding: '5px 10px', border: '1px solid #e2e8f0',
-                  background: 'white', color: dataLoading ? '#94a3b8' : '#64748b',
-                  fontSize: '11px', fontWeight: 700, cursor: dataLoading ? 'not-allowed' : 'pointer',
-                  display: 'flex', alignItems: 'center', gap: '5px',
-                }}
-                onMouseEnter={e => { if (!dataLoading) e.currentTarget.style.background = '#f8fafc'; }}
-                onMouseLeave={e => e.currentTarget.style.background = 'white'}
-              >
-                <svg
-                  width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                  style={{ animation: dataLoading ? 'spin 1s linear infinite' : 'none' }}
+              {/* ── Refresh controls: Auto-Refresh toggle + manual Refresh ── */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {/* Auto-Refresh toggle — NEW */}
+                <button
+                  onClick={() => setAutoRefresh(v => !v)}
+                  title={autoRefresh
+                    ? 'Auto-refresh ON (every 5 min) — click to disable'
+                    : 'Auto-refresh OFF — click to enable'}
+                  style={{
+                    padding: '5px 10px',
+                    border: '1px solid #e2e8f0',
+                    background: autoRefresh ? '#1e2d4a' : 'white',
+                    color: autoRefresh ? 'white' : '#94a3b8',
+                    fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    transition: 'background 0.15s, color 0.15s',
+                  }}
                 >
-                  <polyline points="23 4 23 10 17 10"/>
-                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                </svg>
-                Refresh
-              </button>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  Auto: {autoRefresh ? 'ON' : 'OFF'}
+                </button>
+
+                {/* Manual Refresh — unchanged */}
+                <button
+                  onClick={handleRefresh}
+                  disabled={dataLoading}
+                  title="Refresh chart"
+                  style={{
+                    padding: '5px 10px', border: '1px solid #e2e8f0',
+                    background: 'white', color: dataLoading ? '#94a3b8' : '#64748b',
+                    fontSize: '11px', fontWeight: 700, cursor: dataLoading ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                  }}
+                  onMouseEnter={e => { if (!dataLoading) e.currentTarget.style.background = '#f8fafc'; }}
+                  onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                >
+                  <svg
+                    width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                    style={{ animation: dataLoading ? 'spin 1s linear infinite' : 'none' }}
+                  >
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                  </svg>
+                  Refresh
+                </button>
+              </div>
             </div>
             <div className="analytics-chart-wrap" style={{ height: '300px' }}>
               {dataLoading || !chartData ? (

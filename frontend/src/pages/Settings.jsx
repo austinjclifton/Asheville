@@ -190,29 +190,69 @@ export default function Settings() {
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 2800); };
 
+  // ── Save: persist locally AND call PATCH /api/auth/alert-settings ──
   const handleSave = async () => {
     setSaving(true);
     const cl = parseFloat(localPrefs.criticalLow), ch = parseFloat(localPrefs.criticalHigh);
     const ol = parseFloat(localPrefs.optimalLow), oh = parseFloat(localPrefs.optimalHigh);
-    if (isNaN(cl)||isNaN(ch)||isNaN(ol)||isNaN(oh)) { showToast('All thresholds must be valid numbers.', false); setSaving(false); return; }
-    if (cl >= ch) { showToast('Critical low must be less than critical high.', false); setSaving(false); return; }
-    if (ol >= oh) { showToast('Warning low must be less than warning high.', false); setSaving(false); return; }
-    if (ol < cl || oh > ch) { showToast('Warning range must be within critical range.', false); setSaving(false); return; }
+
+    if (isNaN(cl) || isNaN(ch) || isNaN(ol) || isNaN(oh)) {
+      showToast('All thresholds must be valid numbers.', false); setSaving(false); return;
+    }
+    if (cl >= ch) {
+      showToast('Critical low must be less than critical high.', false); setSaving(false); return;
+    }
+    if (ol >= oh) {
+      showToast('Warning low must be less than warning high.', false); setSaving(false); return;
+    }
+    // API requires strict: criticalLow < warningLow < warningHigh < criticalHigh
+    if (ol <= cl || oh >= ch) {
+      showToast('Warning range must be strictly within the critical range.', false); setSaving(false); return;
+    }
+
     const toSave = { ...localPrefs, tempUnit: 'fahrenheit' };
-    saveLocalPrefs(toSave); setLocalPrefs(toSave);
-    showToast('Settings saved successfully'); setSaving(false);
+    saveLocalPrefs(toSave);
+    setLocalPrefs(toSave);
+
+    try {
+      await apiFetch('/api/auth/alert-settings', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          alerts_enabled: true,
+          warning_low_threshold: ol,
+          warning_high_threshold: oh,
+          critical_low_threshold: cl,
+          critical_high_threshold: ch,
+        }),
+      });
+      showToast('Settings saved successfully');
+    } catch (err) {
+      showToast(err.message || 'Alert settings update failed.', false);
+    }
+
+    setSaving(false);
   };
 
-  const isOnline = deviceLastSeen && (Date.now() - new Date(deviceLastSeen).getTime()) < 30 * 60 * 1000;
-  const sensorId = deviceId ? String(deviceId) : '—';
+  const isOnline = !!(deviceLastSeen && (Date.now() - new Date(deviceLastSeen).getTime()) < 30 * 60 * 1000);
+  const sensorId = deviceId != null ? String(deviceId) : '—';
   const firmwareVersion = 'V.2.4.1';
+
+  // ── Derived status label for System Information ─────────────────
+  // Show '—' when there's no device registered, rather than 'Offline'
+  const statusLabel = deviceLoading
+    ? '—'
+    : deviceId != null
+      ? (isOnline ? 'Online' : 'Offline')
+      : 'No Device';
+  const statusColor = isOnline ? '#22c55e' : '#94a3b8';
+  const statusBorder = isOnline ? '#22c55e' : '#e2e8f0';
+  const statusTextColor = isOnline ? '#16a34a' : '#64748b';
 
   const PersonIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
   const BellIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>;
   const ThermIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>;
   const ShieldIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
   const MailIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>;
-  const PhoneIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f0f2f5' }}>
@@ -231,8 +271,11 @@ export default function Settings() {
             <HamburgerBtn />
             <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Settings</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
-            <span>#{hiveInfo?.id ?? '—'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500 }}>HIVE:</span>
+            <span style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a' }}>
+              {hiveInfo ? `#${hiveInfo.id}` : '—'}
+            </span>
             <span className="status-dot" style={{
               width: '10px', height: '10px',
               background: isOnline ? '#22c55e' : '#94a3b8',
@@ -325,28 +368,61 @@ export default function Settings() {
             </div>
           </SectionCard>
 
-          {/* System Information */}
+          {/* System Information — fixed: correct device status, no stale "Offline" when no device */}
           <div style={{ background: 'white', border: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
               <span style={{ color: '#94a3b8' }}><ShieldIcon /></span>
               <span style={{ fontSize: '12px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>System Information</span>
             </div>
             <div className="settings-sysinfo-grid" style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
-              {[
-                { label: 'Firmware Ver.', value: firmwareVersion },
-                { label: 'Last Sync', value: deviceLoading ? '—' : timeAgo(deviceLastSeen) },
-                { label: 'Sensor ID', value: deviceLoading ? '—' : sensorId },
-              ].map(item => (
-                <div key={item.label}>
-                  <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>{item.label}</div>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>{item.value}</div>
+              {/* Firmware Version */}
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Firmware Ver.</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>{firmwareVersion}</div>
+              </div>
+
+              {/* Last Sync */}
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Last Sync</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>
+                  {deviceLoading ? '—' : timeAgo(deviceLastSeen)}
                 </div>
-              ))}
+              </div>
+
+              {/* Sensor ID */}
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Sensor ID</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>
+                  {deviceLoading ? '—' : sensorId}
+                </div>
+              </div>
+
+              {/* Status — shows '—' when no device, 'Online'/'Offline' when device exists */}
               <div>
                 <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Status</div>
-                <span style={{ display: 'inline-block', padding: '3px 10px', border: `1px solid ${isOnline ? '#22c55e' : '#94a3b8'}`, fontSize: '11px', fontWeight: 700, color: isOnline ? '#16a34a' : '#64748b', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                  {deviceLoading ? '—' : isOnline ? 'Online' : 'Offline'}
-                </span>
+                {deviceLoading ? (
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#94a3b8' }}>—</div>
+                ) : (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    padding: '3px 10px',
+                    border: `1px solid ${statusBorder}`,
+                    fontSize: '11px', fontWeight: 700,
+                    color: statusTextColor,
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                  }}>
+                    {deviceId != null && (
+                      <span style={{
+                        width: '6px', height: '6px',
+                        background: statusColor,
+                        display: 'inline-block',
+                        borderRadius: '50%',
+                        flexShrink: 0,
+                      }} />
+                    )}
+                    {statusLabel}
+                  </span>
+                )}
               </div>
             </div>
           </div>
