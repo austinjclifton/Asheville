@@ -200,6 +200,30 @@ export default function Settings() {
               } catch {}
             }
             setDeviceLastSeen(lastSeen);
+            // One-time silent sync: push local defaults to backend if never done before
+            const syncKey = 'asheville_thresholds_synced_v1';
+            if (!localStorage.getItem(syncKey)) {
+              const p = loadLocalPrefs();
+              const cl = parseFloat(p.criticalLow);
+              const ch = parseFloat(p.criticalHigh);
+              const ol = parseFloat(p.optimalLow);
+              const oh = parseFloat(p.optimalHigh);
+              if (cl < ol && ol < oh && oh < ch) {
+                try {
+                  await apiFetch('/api/auth/alert-settings', {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                      alerts_enabled: true,
+                      warning_low_threshold: ol,
+                      warning_high_threshold: oh,
+                      critical_low_threshold: cl,
+                      critical_high_threshold: ch,
+                    }),
+                  });
+                  localStorage.setItem(syncKey, '1');
+                } catch (_) { /* non-fatal */ }
+              }
+            }
           }
         }
       } catch {} finally { setDeviceLoading(false); }
@@ -322,7 +346,7 @@ export default function Settings() {
             </div>
             <div className="settings-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <Field label="Email Address" value={accountEmail} disabled />
-              <Field label="Phone Number" value={localPrefs.phoneNum || ''} onChange={v => setLocalPref('phoneNum', v)} />
+              {/* <Field label="Phone Number" value={localPrefs.phoneNum || ''} onChange={v => setLocalPref('phoneNum', v)} /> */}
             </div>
             <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
               <button onClick={() => setShowPasswordModal(true)} style={{ background: 'none', border: 'none', color: '#f5a623', fontSize: '13px', fontWeight: 700, cursor: 'pointer', padding: 0, letterSpacing: '0.04em', textTransform: 'uppercase' }}>

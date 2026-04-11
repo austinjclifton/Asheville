@@ -158,13 +158,14 @@ export default function Alerts() {
           <div style={{ background: 'white', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
             <div className="filter-pills-row" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap' }}>Severity:</span>
-              <FBtn label="All" active={severityFilter === 'all'} onClick={() => setSeverityFilter('all')} />
+              <FBtn label="All"      active={severityFilter === 'all'}      onClick={() => setSeverityFilter('all')} />
               <FBtn label="Critical" active={severityFilter === 'critical'} onClick={() => setSeverityFilter('critical')} />
-              <FBtn label="Warning" active={severityFilter === 'warning'} onClick={() => setSeverityFilter('warning')} />
+              <FBtn label="Warning"  active={severityFilter === 'warning'}  onClick={() => setSeverityFilter('warning')} />
+              <FBtn label="Info"     active={severityFilter === 'info'}     onClick={() => setSeverityFilter('info')} />
               <div style={{ width: '1px', height: '20px', background: '#e2e8f0', margin: '0 2px' }} />
               <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap' }}>Status:</span>
-              <FBtn label="All" active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
-              <FBtn label="Active" active={statusFilter === 'active'} onClick={() => setStatusFilter('active')} />
+              <FBtn label="All"      active={statusFilter === 'all'}      onClick={() => setStatusFilter('all')} />
+              <FBtn label="Active"   active={statusFilter === 'active'}   onClick={() => setStatusFilter('active')} />
               <FBtn label="Resolved" active={statusFilter === 'resolved'} onClick={() => setStatusFilter('resolved')} />
             </div>
             <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '10px' }}>

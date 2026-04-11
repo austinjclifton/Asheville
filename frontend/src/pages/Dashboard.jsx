@@ -79,6 +79,19 @@ function SetupWizard({ onComplete }) {
         body: JSON.stringify({ installedAt: new Date().toISOString() }),
       });
       setDevice(deviceRes.device);
+      // Push default alert thresholds so the backend can generate alerts immediately
+      try {
+        await apiFetch('/api/auth/alert-settings', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            alerts_enabled: true,
+            warning_low_threshold: 93,
+            warning_high_threshold: 99,
+            critical_low_threshold: 91,
+            critical_high_threshold: 104,
+          }),
+        });
+      } catch (_) { /* non-fatal – user can configure in Settings */ }
       setStep(2);
     } catch (err) {
       setError(err.message || 'Failed to create hive. Please try again.');
