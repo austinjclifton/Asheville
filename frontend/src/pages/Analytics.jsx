@@ -303,9 +303,11 @@ export default function Analytics() {
     setTimeout(() => setToast(null), 2500);
   };
 
-  const handleExport = () => {
-    exportToCSV(allSummaries, range);
-    showToast(`Exported ${allSummaries.length} rows as CSV`);
+const handleExport = () => {
+    const days = RANGE_DAYS[range];
+    const exportData = allSummaries.slice(0, days);
+    exportToCSV(exportData, range);
+    showToast(`Exported ${exportData.length} rows as CSV`);
   };
 
   const handleFilterCycle = () => {
