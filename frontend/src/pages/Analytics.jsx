@@ -201,9 +201,30 @@ const RANGE_LIMITS = { '24H': 300, '2D': 600, '7D': 1500 };
 const FILTER_OPTIONS = ['All', 'Normal', 'Warning'];
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
-function exportToCSV(summaries, range) {
-  const header = 'Date,Int. Avg,Ext. Avg,Diff,Status,Avg RSSI\n';
-  const rows = summaries.map(r => `${r.date},${r.intAvg},${r.extAvg},${r.diff},${r.status},${r.avgRssi}`).join('\n');
+// Exports the raw chart readings (matching the selected graph range exactly)
+function exportChartToCSV(readings, externalConditions, range) {
+  const extByTs = {};
+  (externalConditions || []).forEach(ec => {
+    const ts = Math.floor(new Date(ec.bucket_at).getTime() / (10 * 60 * 1000));
+    extByTs[ts] = ec.temperature;
+  });
+
+  const header = 'Time,Internal Temp (°F),External Temp (°F)\n';
+  const rows = readings.map(r => {
+    const d = new Date(r.bucket_at);
+    const label = range === '7D'
+      ? fmtDate(d)
+      : `${fmtDate(d)} ${fmtTime(d)}`;
+    const intTemp = parseFloat(r.temperature).toFixed(1);
+    const ts = Math.floor(d.getTime() / (10 * 60 * 1000));
+    let extTemp = '';
+    for (const offset of [0, 1, -1]) {
+      const val = extByTs[ts + offset];
+      if (val !== undefined && val !== null) { extTemp = parseFloat(val).toFixed(1); break; }
+    }
+    return `${label},${intTemp},${extTemp}`;
+  }).join('\n');
+
   const blob = new Blob([header + rows], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -222,10 +243,12 @@ export default function Analytics() {
   const [toast, setToast] = useState(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [hiveId, setHiveId] = useState(null);
-  // ── NEW: auto-refresh on/off toggle ─────────────────────────────
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const hiveIdRef = useRef(null);
+  // Store the raw chart readings and external conditions for export
+  const chartReadingsRef = useRef([]);
+  const chartExtRef = useRef([]);
 
   useEffect(() => {
     if (!authReady || authError) return;
@@ -264,12 +287,18 @@ export default function Analytics() {
       const summaryReadings = summaryReadingsRes.status === 'fulfilled' ? (summaryReadingsRes.value?.readings ?? []) : [];
       const summaryExt      = summaryExtRes.status === 'fulfilled'      ? (summaryExtRes.value?.externalConditions ?? []) : [];
 
+      // Store raw chart data for export so it always matches the selected range
+      chartReadingsRef.current = chartReadings;
+      chartExtRef.current = chartExt;
+
       const realData = buildChartDataFromAPI(chartReadings, chartExt, selectedRange);
       setChartData(realData ?? null);
 
       const summaryData = buildSummaries(summaryReadings, summaryExt);
       setAllSummaries(summaryData);
     } catch {
+      chartReadingsRef.current = [];
+      chartExtRef.current = [];
       setChartData(null);
       setAllSummaries([]);
     } finally {
@@ -285,7 +314,6 @@ export default function Analytics() {
     }
   }, [range, loadData, authReady, authError]);
 
-  // ── Auto-refresh: interval only runs when autoRefresh is true ───
   useEffect(() => {
     if (!autoRefresh) return;
     const id = setInterval(() => {
@@ -303,11 +331,10 @@ export default function Analytics() {
     setTimeout(() => setToast(null), 2500);
   };
 
-const handleExport = () => {
-    const days = RANGE_DAYS[range];
-    const exportData = allSummaries.slice(0, days);
-    exportToCSV(exportData, range);
-    showToast(`Exported ${exportData.length} rows as CSV`);
+  const handleExport = () => {
+    if (!chartReadingsRef.current.length) return;
+    exportChartToCSV(chartReadingsRef.current, chartExtRef.current, range);
+    showToast(`Exported ${chartReadingsRef.current.length} rows as CSV`);
   };
 
   const handleFilterCycle = () => {
@@ -380,12 +407,12 @@ const handleExport = () => {
               </div>
               <button
                 onClick={handleExport}
-                disabled={allSummaries.length === 0}
+                disabled={!chartData}
                 style={{
                   padding: '7px 14px', border: '1.5px solid #e2e8f0',
                   background: 'white', color: '#1e2d4a', fontSize: '12px', fontWeight: 700,
-                  cursor: allSummaries.length === 0 ? 'not-allowed' : 'pointer',
-                  opacity: allSummaries.length === 0 ? 0.5 : 1,
+                  cursor: !chartData ? 'not-allowed' : 'pointer',
+                  opacity: !chartData ? 0.5 : 1,
                   display: 'flex', alignItems: 'center', gap: '6px',
                   boxShadow: 'var(--shadow-sm)',
                 }}
@@ -407,9 +434,8 @@ const handleExport = () => {
                   {range === '7D' ? 'Daily averages (°F)' : 'Raw readings (°F)'}
                 </div>
               </div>
-              {/* ── Refresh controls: Auto-Refresh toggle + manual Refresh ── */}
+              {/* ── Refresh controls ── */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {/* Auto-Refresh toggle — NEW */}
                 <button
                   onClick={() => setAutoRefresh(v => !v)}
                   title={autoRefresh
@@ -431,7 +457,6 @@ const handleExport = () => {
                   Auto: {autoRefresh ? 'ON' : 'OFF'}
                 </button>
 
-                {/* Manual Refresh — unchanged */}
                 <button
                   onClick={handleRefresh}
                   disabled={dataLoading}
