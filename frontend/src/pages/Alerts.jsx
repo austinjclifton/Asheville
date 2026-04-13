@@ -88,7 +88,7 @@ export default function Alerts() {
       const alertsRes = await apiFetch('/api/alerts');
       const mappedAlerts = (alertsRes?.alerts ?? []).map(mapApiAlert);
 
-      // Build a synthetic info entry from the latest reading if temp is in normal range
+      // Always build an INFO entry from the latest reading, regardless of temperature range.
       let normalEntry = null;
       if (hive) {
         try {
@@ -99,13 +99,16 @@ export default function Alerts() {
             const temp = parseFloat(reading.temperature);
             const optLow = parseFloat(prefs.optimalLow);
             const optHigh = parseFloat(prefs.optimalHigh);
-            if (!isNaN(temp) && !isNaN(optLow) && !isNaN(optHigh) && temp >= optLow && temp <= optHigh) {
+            if (!isNaN(temp)) {
+              const inRange = !isNaN(optLow) && !isNaN(optHigh) && temp >= optLow && temp <= optHigh;
               normalEntry = {
                 id: 'normal-state',
                 severity: 'info',
                 status: 'active',
-                title: 'Normal Operating Conditions',
-                description: `Hive ${hive.id} temperature at ${temp.toFixed(1)}°F is within the normal range (${optLow}°F – ${optHigh}°F). All systems operating normally.`,
+                title: inRange ? 'Normal Operating Conditions' : 'Latest Sensor Reading',
+                description: inRange
+                  ? `Hive ${hive.id} temperature at ${temp.toFixed(1)}°F is within the normal range (${optLow}°F – ${optHigh}°F). All systems operating normally.`
+                  : `Hive ${hive.id} temperature at ${temp.toFixed(1)}°F. See alerts below for threshold details.`,
                 time: fmtAlertTime(reading.received_at || reading.bucket_at),
                 sensor: reading.device_id ? `Device ${reading.device_id}` : 'Sensor',
                 temperature: temp,
