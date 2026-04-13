@@ -24,36 +24,6 @@ function HamburgerBtn() {
 }
 
 /* ── Setup Wizard ──────────────────────────────────────────────── */
-
-function CopyButton({ text, label }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      style={{
-        flexShrink: 0, background: copied ? '#22c55e' : 'rgba(255,255,255,0.12)',
-        border: 'none', padding: '5px 10px',
-        color: 'white', fontSize: '11px', fontWeight: 700, cursor: 'pointer',
-        transition: 'background 0.2s', whiteSpace: 'nowrap',
-      }}
-    >
-      {copied ? '✓ Copied' : (label || 'Copy')}
-    </button>
-  );
-}
-
-function CodeRow({ label, value }) {
-  return (
-    <div style={{ marginBottom: '10px' }}>
-      <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0f172a', padding: '9px 12px' }}>
-        <code style={{ flex: 1, color: '#f5a623', fontFamily: 'monospace', fontSize: '13px', wordBreak: 'break-all' }}>{value}</code>
-        <CopyButton text={value} />
-      </div>
-    </div>
-  );
-}
-
 function SetupWizard({ onComplete }) {
   const [step, setStep] = useState(1);
   const [hiveName, setHiveName] = useState('');
@@ -79,7 +49,6 @@ function SetupWizard({ onComplete }) {
         body: JSON.stringify({ installedAt: new Date().toISOString() }),
       });
       setDevice(deviceRes.device);
-      // Push default alert thresholds so the backend can generate alerts immediately
       try {
         await apiFetch('/api/auth/alert-settings', {
           method: 'PATCH',
@@ -91,7 +60,7 @@ function SetupWizard({ onComplete }) {
             critical_high_threshold: 104,
           }),
         });
-      } catch (_) { /* non-fatal – user can configure in Settings */ }
+      } catch (_) { /* non-fatal */ }
       setStep(2);
     } catch (err) {
       setError(err.message || 'Failed to create hive. Please try again.');
@@ -99,9 +68,6 @@ function SetupWizard({ onComplete }) {
       setLoading(false);
     }
   };
-
-  const ingestUrl = `${window.location.origin}/ingest/readings`;
-  const examplePayload = device ? JSON.stringify({ deviceId: String(device.id), temperature: "34.5", rssi: "-70" }, null, 2) : '';
 
   return (
     <div style={{
@@ -111,7 +77,7 @@ function SetupWizard({ onComplete }) {
     }}>
       <div style={{
         background: 'white',
-        width: '100%', maxWidth: step === 2 ? '560px' : '440px',
+        width: '100%', maxWidth: '440px',
         boxShadow: '0 24px 80px rgba(0,0,0,0.3)', overflow: 'hidden', animation: 'fadeIn 0.25s ease',
       }}>
         <div style={{ background: '#1e2d4a', padding: '22px 26px' }}>
@@ -120,8 +86,8 @@ function SetupWizard({ onComplete }) {
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z" fill="white"/></svg>
             </div>
             <div>
-              <div style={{ color: 'white', fontWeight: 800, fontSize: '16px' }}>{step === 1 ? 'Connect Your Sensor' : 'Sensor Ready!'}</div>
-              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', marginTop: '1px' }}>Step {step} of 2 — {step === 1 ? 'Create your hive' : 'Configure your device'}</div>
+              <div style={{ color: 'white', fontWeight: 800, fontSize: '16px' }}>{step === 1 ? 'Set Up Your Hive' : 'You\'re All Set!'}</div>
+              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', marginTop: '1px' }}>Step {step} of 2 — {step === 1 ? 'Name your hive' : 'Device registered'}</div>
             </div>
           </div>
           <div style={{ height: '4px', background: 'rgba(255,255,255,0.12)' }}>
@@ -133,7 +99,7 @@ function SetupWizard({ onComplete }) {
           {step === 1 && (
             <>
               <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px', lineHeight: 1.6 }}>
-                No hive is registered yet. Give your hive a name and we'll create a device ID for your sensor automatically.
+                Give your hive a name to get started. A device will be registered automatically.
               </p>
               {error && (
                 <div style={{ marginBottom: '16px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: '13px', fontWeight: 500 }}>{error}</div>
@@ -164,7 +130,7 @@ function SetupWizard({ onComplete }) {
                   />
                 </div>
                 <button type="submit" disabled={loading} style={{ width: '100%', padding: '13px', border: 'none', background: loading ? '#94a3b8' : '#1e2d4a', color: 'white', fontSize: '14px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                  {loading ? <><span style={{ animation: 'pulse 1s infinite' }}>●</span> Creating…</> : 'Create Hive & Register Device →'}
+                  {loading ? <><span style={{ animation: 'pulse 1s infinite' }}>●</span> Setting up…</> : 'Create Hive →'}
                 </button>
               </form>
             </>
@@ -172,37 +138,23 @@ function SetupWizard({ onComplete }) {
 
           {step === 2 && device && (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px', padding: '11px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              {/* Clean success confirmation — no API docs, no curl */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', padding: '14px', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 <div style={{ fontSize: '13px', fontWeight: 600, color: '#15803d' }}>
-                  Hive <strong>"{hive?.name}"</strong> created — Device ID <strong>{device.id}</strong> registered.
+                  Hive <strong>"{hive?.name}"</strong> is ready to go.
                 </div>
               </div>
 
-              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px', lineHeight: 1.6 }}>
-                Point your sensor at the endpoint below. Include your <code style={{ background: '#f1f5f9', padding: '1px 5px', fontSize: '12px' }}>INGEST_SECRET</code> in the header.
+              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px', lineHeight: 1.7 }}>
+                Your sensor device has been registered. Power it on and it will automatically start sending data to your dashboard.
               </p>
 
-              <CodeRow label="POST Endpoint" value={ingestUrl} />
-              <CodeRow label="Device ID" value={String(device.id)} />
-
-              <div style={{ marginBottom: '10px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>Required Headers</div>
-                <div style={{ background: '#0f172a', padding: '10px 12px' }}>
-                  <code style={{ color: '#86efac', fontFamily: 'monospace', fontSize: '12px', display: 'block' }}>x-ingest-token: YOUR_INGEST_SECRET</code>
-                  <code style={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: '12px', display: 'block', marginTop: '3px' }}>Content-Type: application/json</code>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '22px' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>Example JSON Body</div>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', background: '#0f172a', padding: '10px 12px' }}>
-                  <pre style={{ flex: 1, color: '#f5a623', fontFamily: 'monospace', fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap' }}>{examplePayload}</pre>
-                  <CopyButton text={examplePayload} label="Copy" />
-                </div>
-                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px', lineHeight: 1.6 }}>
-                  <strong>temperature</strong> — °F string, e.g. "95.2" &nbsp;·&nbsp; <strong>rssi</strong> — dBm string from −200 to 0
-                </div>
+              {/* Show device ID cleanly, without any API context */}
+              <div style={{ marginBottom: '24px', padding: '14px 16px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Device ID</div>
+                <div style={{ fontSize: '22px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em' }}>{device.id}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>Use this ID when configuring your sensor hardware.</div>
               </div>
 
               <button onClick={() => onComplete(hive, device)} style={{ width: '100%', padding: '13px', border: 'none', background: '#1e2d4a', color: 'white', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
@@ -216,32 +168,21 @@ function SetupWizard({ onComplete }) {
   );
 }
 
-/* ── No-readings banner ──────────────────────────────────────────── */
-
+/* ── No-readings banner — clean, no developer instructions ──────── */
 function NoReadingsBanner({ deviceId }) {
-  const ingestUrl = `${window.location.origin}/ingest/readings`;
-  const curlCmd = `curl -X POST ${ingestUrl} \\
-  -H "Content-Type: application/json" \\
-  -H "x-ingest-token: <YOUR_INGEST_SECRET>" \\
-  -d '{"deviceId":"${deviceId}","temperature":"95.2","rssi":"-70"}'`;
-
   return (
     <div style={{ margin: '0 16px 16px', background: '#fffbeb', border: '1px solid #fde68a', padding: '16px 20px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" style={{ flexShrink: 0 }}>
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
           <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '13px', fontWeight: 700, color: '#92400e', marginBottom: '4px' }}>
+        <div>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: '#92400e', marginBottom: '2px' }}>
             Waiting for first sensor reading
           </div>
-          <div style={{ fontSize: '12px', color: '#78350f', lineHeight: 1.6, marginBottom: '10px' }}>
-            Device ID <code style={{ background: '#fef3c7', padding: '1px 5px', fontFamily: 'monospace' }}>{deviceId}</code> is registered. Send a test POST:
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', background: '#0f172a', padding: '10px 12px' }}>
-            <pre style={{ flex: 1, color: '#f5a623', fontFamily: 'monospace', fontSize: '11px', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{curlCmd}</pre>
-            <CopyButton text={curlCmd} label="Copy" />
+          <div style={{ fontSize: '12px', color: '#78350f', lineHeight: 1.6 }}>
+            Device <strong>{deviceId}</strong> is registered. Power on your sensor and it will connect automatically.
           </div>
         </div>
       </div>
@@ -250,7 +191,6 @@ function NoReadingsBanner({ deviceId }) {
 }
 
 /* ── Chart ──────────────────────────────────────────────────────── */
-
 function DashboardChart({ data }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
@@ -298,7 +238,6 @@ function DashboardChart({ data }) {
 }
 
 /* ── Temp Card ──────────────────────────────────────────────────── */
-
 function TempCard({ title, value, unit, delta, sensor, accentColor, Icon }) {
   const isNeg = delta < 0;
   const isZero = delta === 0;
@@ -342,7 +281,6 @@ const ThermIcon = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="no
 const WindIcon  = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>;
 
 /* ── System Events ──────────────────────────────────────────────── */
-
 function SystemEventList({ hiveId }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -385,7 +323,7 @@ function SystemEventList({ hiveId }) {
   if (events.length === 0) {
     return (
       <div style={{ padding: '20px', color: '#94a3b8', fontSize: '13px', textAlign: 'center' }}>
-        No recent readings. Send data from your sensor to see events here.
+        No recent readings. Power on your sensor to see events here.
       </div>
     );
   }
@@ -412,7 +350,6 @@ function SystemEventList({ hiveId }) {
 }
 
 /* ── Dashboard ──────────────────────────────────────────────────── */
-
 export default function Dashboard() {
   const navigate = useNavigate();
   const { ready: authReady, error: authError } = useAuth();
@@ -525,10 +462,19 @@ export default function Dashboard() {
     }
   };
 
-  const handleSetupComplete = (newHive, newDevice) => {
+  // Auto-connect: fetch external conditions immediately after setup so the
+  // weather card populates without requiring any manual action from the user.
+  const handleSetupComplete = async (newHive, newDevice) => {
     setHive(newHive); setDevice(newDevice);
     hiveIdRef.current = newHive.id;
     setShowSetup(false);
+
+    try {
+      await apiFetch(`/api/external-conditions/fetch?hiveId=${newHive.id}`, { method: 'POST' });
+      const extRes = await apiFetch(`/api/external-conditions/latest?hiveId=${newHive.id}`);
+      setExternalCondition(extRes?.externalCondition ?? null);
+    } catch (_) { /* non-fatal — sensor data will appear once the device connects */ }
+
     fetchChartData(newHive.id, '24H');
   };
 
@@ -584,6 +530,7 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Clean waiting banner — no curl commands */}
         {!loading && hive && !hasRealReadings && (
           device
             ? <NoReadingsBanner deviceId={device.id} />
