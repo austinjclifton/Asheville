@@ -3,6 +3,16 @@ import Navigation from "../components/Navigation";
 import { apiFetch } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
+const PREF_KEY = 'asheville_settings_v1';
+
+function loadLocalPrefs() {
+  try {
+    const raw = localStorage.getItem(PREF_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return { optimalLow: '93', optimalHigh: '99' };
+}
+
 function fmtAlertTime(dateStr) {
   const d = new Date(dateStr);
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -72,9 +82,40 @@ export default function Alerts() {
     try {
       const hivesRes = await apiFetch('/api/hives');
       const hives = hivesRes?.hives ?? [];
-      if (hives.length) setHiveInfo(hives[0]);
+      let hive = null;
+      if (hives.length) { hive = hives[0]; setHiveInfo(hive); }
+
       const alertsRes = await apiFetch('/api/alerts');
-      setAlerts((alertsRes?.alerts ?? []).map(mapApiAlert));
+      const mappedAlerts = (alertsRes?.alerts ?? []).map(mapApiAlert);
+
+      // Build a synthetic info entry from the latest reading if temp is in normal range
+      let normalEntry = null;
+      if (hive) {
+        try {
+          const latestRes = await apiFetch(`/api/readings/latest?hiveId=${hive.id}`);
+          const reading = latestRes?.reading;
+          if (reading && reading.temperature != null) {
+            const prefs = loadLocalPrefs();
+            const temp = parseFloat(reading.temperature);
+            const optLow = parseFloat(prefs.optimalLow);
+            const optHigh = parseFloat(prefs.optimalHigh);
+            if (!isNaN(temp) && !isNaN(optLow) && !isNaN(optHigh) && temp >= optLow && temp <= optHigh) {
+              normalEntry = {
+                id: 'normal-state',
+                severity: 'info',
+                status: 'active',
+                title: 'Normal Operating Conditions',
+                description: `Hive ${hive.id} temperature at ${temp.toFixed(1)}°F is within the normal range (${optLow}°F – ${optHigh}°F). All systems operating normally.`,
+                time: fmtAlertTime(reading.received_at || reading.bucket_at),
+                sensor: reading.device_id ? `Device ${reading.device_id}` : 'Sensor',
+                temperature: temp,
+              };
+            }
+          }
+        } catch {}
+      }
+
+      setAlerts(normalEntry ? [normalEntry, ...mappedAlerts] : mappedAlerts);
     } catch (err) {
       setError(err.message || 'Failed to load activity data.');
       setAlerts([]);
