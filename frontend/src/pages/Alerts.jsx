@@ -42,9 +42,30 @@ function mapApiAlert(alert) {
   };
 }
 
+// Build a synthetic INFO entry from a known temperature + metadata.
+// Returns null only when temp is genuinely unavailable.
+function buildInfoEntry(hiveId, temp, formattedTime, sensor) {
+  if (temp == null || isNaN(temp)) return null;
+  const prefs = loadLocalPrefs();
+  const optLow  = parseFloat(prefs.optimalLow);
+  const optHigh = parseFloat(prefs.optimalHigh);
+  const inRange = !isNaN(optLow) && !isNaN(optHigh) && temp >= optLow && temp <= optHigh;
+  return {
+    id: 'normal-state',
+    severity: 'info',
+    status: 'active',
+    title: inRange ? 'Normal Operating Conditions' : 'Latest Sensor Reading',
+    description: inRange
+      ? `Hive ${hiveId} temperature at ${temp.toFixed(1)}°F is within the normal range (${optLow}°F – ${optHigh}°F). All systems operating normally.`
+      : `Hive ${hiveId} temperature at ${temp.toFixed(1)}°F. See alerts below for threshold details.`,
+    time:   formattedTime || fmtAlertTime(new Date().toISOString()),
+    sensor: sensor || 'Sensor',
+    temperature: temp,
+  };
+}
+
 const SEVERITY_COLORS = { critical: '#ef4444', warning: '#f59e0b', info: '#3b82f6' };
 
-/* Hamburger trigger */
 function HamburgerBtn() {
   return (
     <button
@@ -88,52 +109,33 @@ export default function Alerts() {
       const alertsRes = await apiFetch('/api/alerts');
       const mappedAlerts = (alertsRes?.alerts ?? []).map(mapApiAlert);
 
-      // Always build an INFO entry showing the latest known sensor state.
-      // Try /api/readings/latest first; fall back to the most recent mapped alert.
-      let normalEntry = null;
+      // ── INFO entry ────────────────────────────────────────────────────────
+      // Step 1: seed unconditionally from the most recent mapped alert so we
+      //         always have something to show when warnings/criticals are present.
+      let infoTemp   = mappedAlerts.length > 0 ? mappedAlerts[0].temperature   : null;
+      let infoTime   = mappedAlerts.length > 0 ? mappedAlerts[0].time          : null;
+      let infoSensor = mappedAlerts.length > 0 ? mappedAlerts[0].sensor        : null;
+
+      // Step 2: try to upgrade with the actual latest reading (gives us an
+      //         accurate timestamp + handles the "no active alerts" case).
       if (hive) {
-        let latestTemp = null;
-        let latestTime = null;
-        let latestDeviceId = null;
-
         try {
-          const latestRes = await apiFetch(`/api/readings/latest?hiveId=${hive.id}`);
-          const r = latestRes?.reading;
+          const lr = await apiFetch(`/api/readings/latest?hiveId=${hive.id}`);
+          const r  = lr?.reading;
           if (r && r.temperature != null) {
-            latestTemp = parseFloat(r.temperature);
-            latestTime = r.received_at || r.bucket_at || null;
-            latestDeviceId = r.device_id ?? null;
+            const t = parseFloat(r.temperature);
+            if (!isNaN(t)) {
+              infoTemp   = t;
+              infoTime   = fmtAlertTime(r.received_at || r.bucket_at || new Date().toISOString());
+              infoSensor = r.device_id ? `Device ${r.device_id}` : infoSensor;
+            }
           }
-        } catch {}
-
-        // Fall back to most recent alert if the readings fetch yielded nothing
-        if ((latestTemp === null || isNaN(latestTemp)) && mappedAlerts.length > 0) {
-          latestTemp = mappedAlerts[0].temperature;
-          latestTime = null;
-          latestDeviceId = null;
-        }
-
-        if (latestTemp !== null && !isNaN(latestTemp)) {
-          const prefs = loadLocalPrefs();
-          const optLow = parseFloat(prefs.optimalLow);
-          const optHigh = parseFloat(prefs.optimalHigh);
-          const inRange = !isNaN(optLow) && !isNaN(optHigh) && latestTemp >= optLow && latestTemp <= optHigh;
-          normalEntry = {
-            id: 'normal-state',
-            severity: 'info',
-            status: 'active',
-            title: inRange ? 'Normal Operating Conditions' : 'Latest Sensor Reading',
-            description: inRange
-              ? `Hive ${hive.id} temperature at ${latestTemp.toFixed(1)}°F is within the normal range (${optLow}°F – ${optHigh}°F). All systems operating normally.`
-              : `Hive ${hive.id} temperature at ${latestTemp.toFixed(1)}°F. See alerts below for threshold details.`,
-            time: latestTime ? fmtAlertTime(latestTime) : fmtAlertTime(new Date().toISOString()),
-            sensor: latestDeviceId
-              ? `Device ${latestDeviceId}`
-              : (mappedAlerts[0]?.sensor || 'Sensor'),
-            temperature: latestTemp,
-          };
-        }
+        } catch (_) { /* non-fatal – baseline from step 1 remains */ }
       }
+
+      const normalEntry = hive
+        ? buildInfoEntry(hive.id, infoTemp, infoTime, infoSensor)
+        : null;
 
       setAlerts(normalEntry ? [normalEntry, ...mappedAlerts] : mappedAlerts);
     } catch (err) {
@@ -163,24 +165,36 @@ export default function Alerts() {
 
   const filtered = alerts.filter(a => {
     if (severityFilter !== 'all' && a.severity !== severityFilter) return false;
-    if (statusFilter === 'active' && a.status === 'resolved') return false;
-    if (statusFilter === 'resolved' && a.status !== 'resolved') return false;
+    if (statusFilter === 'active'   && a.status === 'resolved')    return false;
+    if (statusFilter === 'resolved' && a.status !== 'resolved')    return false;
     if (search) {
       const q = search.toLowerCase();
-      if (!a.title.toLowerCase().includes(q) && !a.description.toLowerCase().includes(q) && !a.sensor.toLowerCase().includes(q)) return false;
+      if (
+        !a.title.toLowerCase().includes(q) &&
+        !a.description.toLowerCase().includes(q) &&
+        !a.sensor.toLowerCase().includes(q)
+      ) return false;
     }
     return true;
   });
 
   const handleExport = () => {
-    const lines = ['Time,Severity,Status,Sensor,Title,Temperature', ...filtered.map(a => `${a.time},${a.severity},${a.status},${a.sensor},${a.title},${a.temperature}°F`)];
+    const lines = [
+      'Time,Severity,Status,Sensor,Title,Temperature',
+      ...filtered.map(a => `${a.time},${a.severity},${a.status},${a.sensor},${a.title},${a.temperature}°F`),
+    ];
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const el = document.createElement('a'); el.href = url; el.download = 'activity-log.csv'; el.click(); URL.revokeObjectURL(url);
+    const url  = URL.createObjectURL(blob);
+    const el   = document.createElement('a');
+    el.href = url; el.download = 'activity-log.csv'; el.click();
+    URL.revokeObjectURL(url);
   };
 
   const FBtn = ({ label, active, onClick }) => (
-    <button onClick={onClick} style={{ padding: '5px 12px', border: '1px solid #e2e8f0', background: active ? '#1e2d4a' : 'white', color: active ? 'white' : '#64748b', fontSize: '11px', fontWeight: 700, cursor: 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+    <button
+      onClick={onClick}
+      style={{ padding: '5px 12px', border: '1px solid #e2e8f0', background: active ? '#1e2d4a' : 'white', color: active ? 'white' : '#64748b', fontSize: '11px', fontWeight: 700, cursor: 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}
+    >
       {label}
     </button>
   );
@@ -252,14 +266,16 @@ export default function Alerts() {
           ) : filtered.length === 0 ? (
             <div style={{ background: 'white', border: '1px solid #e2e8f0', padding: '60px', textAlign: 'center' }}>
               <div style={{ color: '#64748b', fontSize: '14px', fontWeight: 500 }}>
-                {alerts.length === 0 ? 'No alerts yet. Alerts are generated when sensor readings cross your configured thresholds.' : 'No events match the current filters'}
+                {alerts.length === 0
+                  ? 'No alerts yet. Alerts are generated when sensor readings cross your configured thresholds.'
+                  : 'No events match the current filters'}
               </div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {filtered.map(alert => {
                 const isResolved = alert.status === 'resolved';
-                const color = SEVERITY_COLORS[alert.severity] || '#94a3b8';
+                const color      = SEVERITY_COLORS[alert.severity] || '#94a3b8';
                 const isMenuOpen = openMenuId === alert.id;
                 return (
                   <div key={alert.id} style={{ background: 'white', borderLeft: `4px solid ${color}`, border: isResolved ? '1px solid #e2e8f0' : `1px solid ${color}` }}>
