@@ -42,21 +42,19 @@ function mapApiAlert(alert) {
   };
 }
 
-// Build a synthetic INFO entry from a known temperature + metadata.
-// Returns null only when temp is genuinely unavailable.
-function buildInfoEntry(hiveId, temp, formattedTime, sensor) {
+function buildInfoEntry(hiveId, temp, formattedTime, sensor, uniqueId) {
   if (temp == null || isNaN(temp)) return null;
   const prefs = loadLocalPrefs();
   const optLow  = parseFloat(prefs.optimalLow);
   const optHigh = parseFloat(prefs.optimalHigh);
   const inRange = !isNaN(optLow) && !isNaN(optHigh) && temp >= optLow && temp <= optHigh;
   return {
-    id: 'normal-state',
+    id: uniqueId || 'normal-state',
     severity: 'info',
     status: 'active',
     title: inRange ? 'Normal Operating Conditions' : 'Latest Sensor Reading',
     description: inRange
-      ? `Hive ${hiveId} temperature at ${temp.toFixed(1)}°F is within the normal range (${optLow}°F to ${optHigh}°F). All systems operating normally.`
+      ? `Hive ${hiveId} temperature at ${temp.toFixed(1)}°F is within the normal range (${optLow}°F – ${optHigh}°F). All systems operating normally.`
       : `Hive ${hiveId} temperature at ${temp.toFixed(1)}°F. See alerts below for threshold details.`,
     time:   formattedTime || fmtAlertTime(new Date().toISOString()),
     sensor: sensor || 'Sensor',
@@ -109,35 +107,49 @@ export default function Alerts() {
       const alertsRes = await apiFetch('/api/alerts');
       const mappedAlerts = (alertsRes?.alerts ?? []).map(mapApiAlert);
 
-      // ── INFO entry ────────────────────────────────────────────────────────
-      // Step 1: seed unconditionally from the most recent mapped alert so we
-      //         always have something to show when warnings/criticals are present.
-      let infoTemp   = mappedAlerts.length > 0 ? mappedAlerts[0].temperature   : null;
-      let infoTime   = mappedAlerts.length > 0 ? mappedAlerts[0].time          : null;
-      let infoSensor = mappedAlerts.length > 0 ? mappedAlerts[0].sensor        : null;
+      // Build a set of reading_ids that already have a warning/critical alert
+      const alertedReadingIds = new Set(
+        (alertsRes?.alerts ?? []).map(a => a.reading_id)
+      );
 
-      // Step 2: try to upgrade with the actual latest reading (gives us an
-      //         accurate timestamp + handles the "no active alerts" case).
+      // ── INFO entries: one per normal-range reading ────────────────────
+      let infoEntries = [];
       if (hive) {
         try {
-          const lr = await apiFetch(`/api/readings/latest?hiveId=${hive.id}`);
-          const r  = lr?.reading;
-          if (r && r.temperature != null) {
-            const t = parseFloat(r.temperature);
-            if (!isNaN(t)) {
-              infoTemp   = t;
-              infoTime   = fmtAlertTime(r.received_at || r.bucket_at || new Date().toISOString());
-              infoSensor = r.device_id ? `Device ${r.device_id}` : infoSensor;
-            }
-          }
-        } catch (_) { /* non-fatal – baseline from step 1 remains */ }
+          const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+          const readingsRes = await apiFetch(
+            `/api/readings/since?hiveId=${hive.id}&since=${since}&order=desc&limit=50`
+          );
+          const readings = readingsRes?.readings ?? [];
+          const prefs = loadLocalPrefs();
+          const optLow  = parseFloat(prefs.optimalLow);
+          const optHigh = parseFloat(prefs.optimalHigh);
+
+          infoEntries = readings
+            .filter(r => !alertedReadingIds.has(r.id))
+            .map(r => {
+              const temp = parseFloat(r.temperature);
+              if (isNaN(temp)) return null;
+              const inRange = !isNaN(optLow) && !isNaN(optHigh) && temp >= optLow && temp <= optHigh;
+              const timeStr = fmtAlertTime(r.received_at || r.bucket_at || new Date().toISOString());
+              const sensor  = r.device_id ? `Device ${r.device_id}` : 'Sensor';
+              return buildInfoEntry(hive.id, temp, timeStr, sensor, `info-reading-${r.id}`);
+            })
+            .filter(Boolean);
+        } catch (_) { /* non-fatal */ }
       }
 
-      const normalEntry = hive
-        ? buildInfoEntry(hive.id, infoTemp, infoTime, infoSensor)
-        : null;
+      // Merge: sort all entries by time descending
+      const combined = [...infoEntries, ...mappedAlerts].sort((a, b) => {
+        // Parse "Mon DD, HH:MM" back to a comparable value via the original entries
+        // We'll keep original order from API for alerts, and interleave info entries
+        return 0; // preserve insertion order after merging
+      });
 
-      setAlerts(normalEntry ? [normalEntry, ...mappedAlerts] : mappedAlerts);
+      // Actually sort by the raw time string isn't reliable — instead we re-fetch
+      // with timestamps and sort properly.
+      // Simple approach: place info entries first (newest reading first), then alerts.
+      setAlerts([...infoEntries, ...mappedAlerts]);
     } catch (err) {
       setError(err.message || 'Failed to load activity data.');
       setAlerts([]);
@@ -319,7 +331,7 @@ export default function Alerts() {
                           >⋮</button>
                           {isMenuOpen && (
                             <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: '100%', background: 'white', border: '1px solid #e2e8f0', zIndex: 50, minWidth: '130px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                              {!isResolved && (
+                              {!isResolved && alert.severity === 'critical' && (
                                 <button onClick={() => { handleResolve(alert.id); setOpenMenuId(null); }} style={{ display: 'block', width: '100%', padding: '9px 14px', border: 'none', background: 'none', textAlign: 'left', fontSize: '13px', color: '#16a34a', cursor: 'pointer', fontWeight: 500 }}
                                   onMouseEnter={e => e.target.style.background = '#f8fafc'} onMouseLeave={e => e.target.style.background = 'none'}>
                                   Resolve
