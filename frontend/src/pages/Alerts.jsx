@@ -56,7 +56,7 @@ function buildInfoEntry(hiveId, temp, formattedTime, sensor) {
     status: 'active',
     title: inRange ? 'Normal Operating Conditions' : 'Latest Sensor Reading',
     description: inRange
-      ? `Hive ${hiveId} temperature at ${temp.toFixed(1)}°F is within the normal range (${optLow}°F – ${optHigh}°F). All systems operating normally.`
+      ? `Hive ${hiveId} temperature at ${temp.toFixed(1)}°F is within the normal range (${optLow}°F to ${optHigh}°F). All systems operating normally.`
       : `Hive ${hiveId} temperature at ${temp.toFixed(1)}°F. See alerts below for threshold details.`,
     time:   formattedTime || fmtAlertTime(new Date().toISOString()),
     sensor: sensor || 'Sensor',
@@ -319,7 +319,7 @@ export default function Alerts() {
                           >⋮</button>
                           {isMenuOpen && (
                             <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: '100%', background: 'white', border: '1px solid #e2e8f0', zIndex: 50, minWidth: '130px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                              {!isResolved && alert.severity === 'critical' && (
+                              {!isResolved && (
                                 <button onClick={() => { handleResolve(alert.id); setOpenMenuId(null); }} style={{ display: 'block', width: '100%', padding: '9px 14px', border: 'none', background: 'none', textAlign: 'left', fontSize: '13px', color: '#16a34a', cursor: 'pointer', fontWeight: 500 }}
                                   onMouseEnter={e => e.target.style.background = '#f8fafc'} onMouseLeave={e => e.target.style.background = 'none'}>
                                   Resolve
